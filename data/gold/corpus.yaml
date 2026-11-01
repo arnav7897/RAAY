@@ -52,3 +52,27 @@ documents:
     source_url: https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12746
     content_hash: 072594bc2eeb3efb62f362a02ff2c4ef971bf5ddf5e54f48bd0784ddde504c29
     expected_clauses: ["2"]
+
+  - key: nbfc-it-governance-2023
+    title: Reserve Bank of India (Information Technology Governance, Risk, Controls and Assurance Practices) Directions, 2023
+    rbi_ref: RBI/2023-24/107
+    dept_ref: DoS.CO.CSITEG/SEC.7/31.01.015/2023-24
+    published_at: 2023-11-07
+    source_url: https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12562
+    expected_clauses: []
+
+  - key: nbfc-fraud-risk-2024
+    title: Master Directions on Fraud Risk Management in Non-Banking Financial Companies (NBFCs) (including Housing Finance Companies)
+    rbi_ref: RBI/DOS/2024-25/120
+    dept_ref: DOS.CO.FMG.SEC.No.7/23.04.001/2024-25
+    published_at: 2024-07-15
+    source_url: https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12704
+    expected_clauses: []
+
+  - key: internal-ombudsman-2023
+    title: Master Direction - Reserve Bank of India (Internal Ombudsman for Regulated Entities) Directions, 2023
+    rbi_ref: RBI/CEPD/2023-24/108
+    dept_ref: CEPD.PRD.No.S1228/13.01.019/2023-24
+    published_at: 2023-12-29
+    source_url: https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12586
+    expected_clauses: []
