@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import type { Answer, Document, Profile, Relationship, RelevantDocument } from './types'
 import ProductTour from './ProductTour'
 import type { TourStep } from './ProductTour'
+import CommandPalette from './CommandPalette'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 type Screen = 'dashboard' | 'library' | 'profile' | 'explorer' | 'questions'
@@ -59,6 +60,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [tourStep, setTourStep] = useState<number | null>(null)
+  const [commandOpen, setCommandOpen] = useState(false)
   const [questionStartedAt, setQuestionStartedAt] = useState<number | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
 
@@ -80,6 +82,8 @@ export default function App() {
     if (user) window.localStorage.setItem(`raay-tour-v1:${user.id}`, 'complete')
     setTourStep(null)
   }, [user])
+
+  const closeCommandPalette = useCallback(() => setCommandOpen(false), [])
 
   const load = useCallback(async () => {
     setBusy(true)
@@ -135,6 +139,17 @@ export default function App() {
     }, 1000)
     return () => window.clearInterval(timer)
   }, [questionStartedAt])
+
+  useEffect(() => {
+    function openCommandPalette(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setCommandOpen(true)
+      }
+    }
+    window.addEventListener('keydown', openCommandPalette)
+    return () => window.removeEventListener('keydown', openCommandPalette)
+  }, [])
 
   useEffect(() => {
     if (!selectedId || !isAuthenticated) return
@@ -232,7 +247,7 @@ export default function App() {
     </aside>
 
     <main className="main">
-      <header className="topbar"><div className="breadcrumb"><span className="breadcrumb-mark">RAAY</span><span className="breadcrumb-separator">/</span> {nav.find((item) => item.id === screen)?.label}</div><div className="topbar-actions"><button className="tour-launch" type="button" onClick={startTour}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 1 1 4.4 1.6c-1.2 1.1-2 1.4-2 3"/><path d="M12 17.5v.1"/></svg><span>Take a tour</span></button><div className="user-chip"><span className="user-avatar">{(user?.email || 'U').slice(0, 1).toUpperCase()}</span><span>{user?.email || 'Account'}</span></div><button className="mobile-signout" type="button" onClick={() => void signOut()} aria-label="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg></button></div></header>
+      <header className="topbar"><div className="breadcrumb"><span className="breadcrumb-mark">RAAY</span><span className="breadcrumb-separator">/</span> {nav.find((item) => item.id === screen)?.label}</div><div className="topbar-actions"><button className="command-trigger" type="button" onClick={() => setCommandOpen(true)} aria-keyshortcuts="Control+K Meta+K"><span>Jump to</span><kbd>⌘ K</kbd></button><button className="tour-launch" type="button" onClick={startTour}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 1 1 4.4 1.6c-1.2 1.1-2 1.4-2 3"/><path d="M12 17.5v.1"/></svg><span>Take a tour</span></button><div className="user-chip"><span className="user-avatar">{(user?.email || 'U').slice(0, 1).toUpperCase()}</span><span>{user?.email || 'Account'}</span></div><button className="mobile-signout" type="button" onClick={() => void signOut()} aria-label="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg></button></div></header>
       <div className="content">
         {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')}>Dismiss</button></div>}
         {screen === 'dashboard' && <Dashboard documents={documents} relevant={relevant} hasProfile={hasProfile} busy={busy} onProfile={() => setScreen('profile')} onSelect={(id) => { setSelectedId(id); setScreen('explorer') }} onAsk={() => setScreen('questions')} />}
@@ -243,6 +258,13 @@ export default function App() {
       </div>
     </main>
     {tourStep !== null && <ProductTour step={tourStep} steps={tourSteps} onContinue={continueTour} onSkip={dismissTour} />}
+    <CommandPalette
+      open={commandOpen}
+      activeScreen={screen}
+      onClose={closeCommandPalette}
+      onNavigate={(nextScreen) => { setScreen(nextScreen); setCommandOpen(false) }}
+      onStartTour={() => { setCommandOpen(false); startTour() }}
+    />
   </div>
 }
 
