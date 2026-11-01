@@ -1,7 +1,7 @@
 <h1 align="center">RAAY</h1>
 
 <p align="center">
-  <img src="docs/raay-readme-banner.svg" alt="RAAY regulatory evidence workspace: know what applies and see the official source evidence." width="100%" />
+  <img src="docs/raay-readme-banner.svg" alt="RAAY regulatory evidence workspace: know what applies and see the official source evidence." height="100%" />
 </p>
 
 <p align="center"><strong>Regulatory relationship engine for RBI documents</strong></p>
