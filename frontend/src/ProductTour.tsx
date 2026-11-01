@@ -57,7 +57,7 @@ export default function ProductTour({ step, steps, onContinue, onSkip }: Product
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
           </button>
         </div>
-        <div className="tour-progress" aria-label={`Step ${step + 1} of ${steps.length}`}>
+        <div className="tour-progress" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }} aria-label={`Step ${step + 1} of ${steps.length}`}>
           {steps.map((item, index) => <span key={item.section} className={index <= step ? 'complete' : ''} />)}
         </div>
         <p className="eyebrow">{String(step + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')} · {current.section}</p>

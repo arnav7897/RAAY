@@ -5,7 +5,7 @@ import ProductTour from './ProductTour'
 import type { TourStep } from './ProductTour'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-type Screen = 'dashboard' | 'profile' | 'explorer' | 'questions'
+type Screen = 'dashboard' | 'library' | 'profile' | 'explorer' | 'questions'
 type Account = { id: number; email: string }
 
 const tourSteps: TourStep[] = [
@@ -14,6 +14,12 @@ const tourSteps: TourStep[] = [
     title: 'Start with what applies to you.',
     description: 'Your workspace brings official RBI documents and profile matches into one clear view.',
     detail: 'Set up your organization profile to see evidence-backed applicability matches here.',
+  },
+  {
+    section: 'REGULATIONS',
+    title: 'Browse the corpus on its own page.',
+    description: 'Search official RBI documents and filter them by current lifecycle status.',
+    detail: 'This is a curated corpus, not a complete search of every RBI publication.',
   },
   {
     section: 'YOUR PROFILE',
@@ -199,7 +205,7 @@ export default function App() {
       return
     }
     const nextStep = tourStep + 1
-    setScreen(['dashboard', 'profile', 'explorer', 'questions'][nextStep] as Screen)
+    setScreen(['dashboard', 'library', 'profile', 'explorer', 'questions'][nextStep] as Screen)
     setTourStep(nextStep)
   }
 
@@ -211,6 +217,7 @@ export default function App() {
   const selected = documents.find((document) => document.id === selectedId)
   const nav: { id: Screen; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Overview', icon: 'overview' },
+    { id: 'library', label: 'Regulations', icon: 'library' },
     { id: 'profile', label: 'My profile', icon: 'profile' },
     { id: 'explorer', label: 'Relationship explorer', icon: 'explorer' },
     { id: 'questions', label: 'Ask RAAY', icon: 'questions' },
@@ -229,6 +236,7 @@ export default function App() {
       <div className="content">
         {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')}>Dismiss</button></div>}
         {screen === 'dashboard' && <Dashboard documents={documents} relevant={relevant} hasProfile={hasProfile} busy={busy} onProfile={() => setScreen('profile')} onSelect={(id) => { setSelectedId(id); setScreen('explorer') }} onAsk={() => setScreen('questions')} />}
+        {screen === 'library' && <DocumentLibrary documents={documents} busy={busy} onSelect={(id) => { setSelectedId(id); setScreen('explorer') }} />}
         {screen === 'profile' && <ProfileScreen profile={profile} setProfile={setProfile} onSave={saveProfile} busy={busy} />}
         {screen === 'explorer' && <Explorer documents={documents} selectedId={selectedId} setSelectedId={setSelectedId} selected={selected} relations={relationships} loading={relationshipsLoading} />}
         {screen === 'questions' && <QuestionScreen documents={documents} selectedId={selectedId} setSelectedId={setSelectedId} question={question} setQuestion={setQuestion} onAsk={ask} answer={answer} busy={busy} elapsedSeconds={elapsedSeconds} />}
@@ -240,6 +248,7 @@ export default function App() {
 
 function Icon({ name }: { name: string }) {
   const icon = name === 'overview' ? <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></>
+    : name === 'library' ? <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 1 4 17.5z"/><path d="M4 6h13M8 9h8M8 12h8M8 15h6"/></>
     : name === 'profile' ? <><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.8-3.3 3.4-5 7.5-5s6.7 1.7 7.5 5"/></>
       : name === 'explorer' ? <><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/><path d="M9.2 9.2 14.8 14.8M17 4v5M14.5 6.5h5M7 15v5M4.5 17.5h5"/></>
         : <><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.5-3A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8.5 11.5h7M8.5 14.5h4"/></>
@@ -302,48 +311,30 @@ function Login({ onAuthenticated }: { onAuthenticated: (account: Account) => voi
 }
 
 function Dashboard({ documents, relevant, hasProfile, busy, onProfile, onSelect, onAsk }: { documents: Document[]; relevant: RelevantDocument[]; hasProfile: boolean; busy: boolean; onProfile: () => void; onSelect: (id: number) => void; onAsk: () => void }) {
-  const [search, setSearch] = useState('')
-  const filteredDocuments = documents.filter((document) => `${document.title} ${document.rbi_ref || ''}`.toLowerCase().includes(search.toLowerCase()))
-
   return <div className="dashboard-page">
-    <div className="page-heading">
-      <div><p className="eyebrow">YOUR REGULATORY WORKSPACE</p><h1>Your RBI desk<span className="heading-dot">.</span></h1><p className="subheading">Clear answers, official sources, and the rules that matter to your organization.</p></div>
-      <span className="corpus-status"><i /> RBI documents indexed</span>
-    </div>
-
-    <section className="welcome-strip">
-      <div className="welcome-copy"><span className="strip-kicker">GROUNDED IN OFFICIAL RBI TEXT</span><h2>Know what applies.<br /><em>See the evidence.</em></h2><p>RAAY connects regulatory requirements to their source, so you can check every step.</p><div className="hero-actions"><button className="hero-button" type="button" onClick={hasProfile ? onAsk : onProfile}>{hasProfile ? 'Ask a question' : 'Set up your profile'}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg></button><span className="hero-note"><span className="hero-check">✓</span> Source-linked answers</span></div></div>
-      <div className="hero-diagram" aria-label="RAAY links RBI rules to your organization and verified evidence">
-        <span className="diagram-orbit orbit-one"/><span className="diagram-orbit orbit-two"/>
-        <div className="diagram-node node-rbi"><span className="node-seal">R</span><span>RBI<br />SOURCE</span></div>
-        <div className="diagram-node node-raay"><span className="node-check">✓</span><span>VERIFIED<br />EVIDENCE</span></div>
-        <div className="diagram-node node-you"><span className="node-person"><Icon name="profile" /></span><span>YOUR<br />BUSINESS</span></div>
-        <span className="diagram-caption">TRACE EVERY RULE</span>
-      </div>
+    <div className="page-heading"><div><p className="eyebrow">YOUR REGULATORY WORKSPACE</p><h1>Your RBI desk<span className="heading-dot">.</span></h1><p className="subheading">A clear starting point for the rules that may apply to your organization.</p></div><span className="corpus-status"><i /> {documents.length} indexed documents</span></div>
+    <section className="overview-welcome"><div><p className="eyebrow">OFFICIAL SOURCES, TRACEABLE ANSWERS</p><h2>{hasProfile ? 'Your workspace is ready.' : 'Start with your organization.'}</h2><p>{hasProfile ? 'Ask a question or review the evidence connected to your profile.' : 'Add your entity type to see supported applicability matches. You can browse documents at any time.'}</p></div><button className="primary-button" type="button" onClick={hasProfile ? onAsk : onProfile}>{hasProfile ? 'Ask a question' : 'Set up profile'} <span>→</span></button></section>
+    <section className="section-block"><div className="section-heading"><div><p className="eyebrow">PERSONALIZED FOR YOU</p><h2>Relevant to your organization</h2></div><button className="text-button" type="button" onClick={onProfile}>{hasProfile ? 'Edit profile' : 'Create profile'}<span aria-hidden="true"> ↗</span></button></div>
+      {!hasProfile ? <div className="empty-card"><div><h3>Profile not set up yet</h3><p>RAAY will show a match only when stored RBI evidence supports it.</p></div><button className="secondary-button" type="button" onClick={onProfile}>Set up profile <span>→</span></button></div> : busy ? <div className="loading-card"><span className="spinner"/><span>Checking evidence against your profile…</span></div> : relevant.length ? <div className="document-grid">{relevant.slice(0, 2).map((doc) => <DocumentCard key={doc.id} doc={doc} onClick={() => onSelect(doc.id)} />)}</div> : <div className="empty-card"><div><h3>No supported matches yet</h3><p>Current stored applicability evidence did not produce a match. Browse the corpus to inspect source material.</p></div></div>}
     </section>
-
-    <section className="journey-panel" aria-labelledby="journey-title">
-      <div className="journey-heading"><div><p className="eyebrow">A SIMPLE WAY TO START</p><h2 id="journey-title">Your regulatory workflow</h2></div><span className="journey-time">3 steps · at your pace</span></div>
-      <div className="journey-steps">
-        <button type="button" className={`journey-step ${hasProfile ? 'step-done' : 'step-current'}`} onClick={onProfile}><span className="journey-number">{hasProfile ? '✓' : '01'}</span><span><b>Set your profile</b><small>Choose your regulated entity</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
-        <button type="button" className="journey-step" onClick={() => documents[0] && onSelect(documents[0].id)}><span className="journey-number">02</span><span><b>Explore the evidence</b><small>Follow verified document links</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
-        <button type="button" className="journey-step" onClick={onAsk}><span className="journey-number">03</span><span><b>Ask a grounded question</b><small>Get a cited answer from RBI text</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
-      </div>
-    </section>
-
-    <section className="section-block">
-      <div className="section-heading"><div><p className="eyebrow">PERSONALIZED FOR YOU</p><h2>Relevant to your organization</h2></div><button className="text-button" type="button" onClick={onProfile}>{hasProfile ? 'Edit profile' : 'Create profile'}<span aria-hidden="true"> ↗</span></button></div>
-      {!hasProfile ? <div className="empty-card profile-prompt"><span className="empty-icon"><Icon name="profile" /></span><div><h3>Start with your organization profile</h3><p>Tell RAAY which regulated entity you are. We’ll show matches supported by stored RBI evidence.</p></div><button className="secondary-button" type="button" onClick={onProfile}>Set up profile <span>→</span></button></div> : busy ? <div className="loading-card"><span className="spinner"/><span>Checking evidence against your profile…</span></div> : relevant.length ? <div className="document-grid">{relevant.map((doc) => <DocumentCard key={doc.id} doc={doc} onClick={() => onSelect(doc.id)} />)}</div> : <div className="empty-card"><div><h3>No supported matches yet</h3><p>The current RBI corpus has no applicability evidence for this profile. Explore the full corpus below.</p></div></div>}
-    </section>
-
-    <section className="section-block corpus-section">
-      <div className="section-heading corpus-heading"><div><p className="eyebrow">SHARED KNOWLEDGE BASE</p><h2>Ingested RBI documents <span className="count-pill">{documents.length}</span></h2><p className="section-description">Browse the official sources currently available to RAAY.</p></div>
-        <label className="search-field"><span className="sr-only">Search documents</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5" /></svg><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search documents" /></label>
-      </div>
-      <div className="table-card"><div className="table-head"><span>DOCUMENT</span><span>RBI REFERENCE</span><span>STATUS</span><span>VERSION</span></div>{filteredDocuments.map((doc) => <button type="button" className="table-row" key={doc.id} onClick={() => onSelect(doc.id)}><span className="doc-name">{doc.title}<small>Open verified relationships <span aria-hidden="true">↗</span></small></span><span className="doc-ref">{doc.rbi_ref || '—'}</span><span><Lifecycle state={doc.lifecycle_state} /></span><span className="version-label">v{doc.version_no}</span></button>)}{filteredDocuments.length === 0 && <div className="table-empty">{busy ? 'Loading documents…' : search ? 'No documents match that search.' : 'No documents found.'}</div>}</div>
-      <p className="table-footnote"><span className="source-bullet"/> Evidence comes from the shared RBI corpus. It is not changed by your profile.</p>
-    </section>
+    <section className="overview-links" aria-label="Continue"><button type="button" onClick={() => documents[0] && onSelect(documents[0].id)}><span className="overview-link-number">01</span><span><b>Follow a document</b><small>See verified amendments, replacements, and repeals.</small></span><span aria-hidden="true">→</span></button><button type="button" onClick={onAsk}><span className="overview-link-number">02</span><span><b>Ask about an RBI rule</b><small>Every supported answer includes a source quote.</small></span><span aria-hidden="true">→</span></button></section>
   </div>
+}
+
+function DocumentLibrary({ documents, busy, onSelect }: { documents: Document[]; busy: boolean; onSelect: (id: number) => void }) {
+  const [search, setSearch] = useState('')
+  const [lifecycle, setLifecycle] = useState('ALL')
+  const filtered = documents.filter((document) => {
+    const matchesText = `${document.title} ${document.rbi_ref || ''}`.toLowerCase().includes(search.trim().toLowerCase())
+    return matchesText && (lifecycle === 'ALL' || (document.lifecycle_state || 'UNKNOWN') === lifecycle)
+  })
+  return <>
+    <div className="page-heading"><div><p className="eyebrow">OFFICIAL RBI SOURCES</p><h1>Regulations<span className="heading-dot">.</span></h1><p className="subheading">Browse the curated corpus currently stored in this RAAY instance.</p></div><span className="corpus-status"><i /> {documents.length} documents</span></div>
+    <div className="library-toolbar"><label className="search-field"><span className="sr-only">Search documents</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5" /></svg><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search title or RBI reference" /></label><label className="library-filter">Lifecycle<select value={lifecycle} onChange={(event) => setLifecycle(event.target.value)}><option value="ALL">All statuses</option><option value="IN_FORCE">In force</option><option value="REPEALED">Repealed</option><option value="SUPERSEDED">Superseded</option><option value="DRAFT">Draft</option></select></label></div>
+    <div className="library-summary"><b>{filtered.length}</b> of {documents.length} documents <span>Each row opens verified document relationships and source evidence.</span></div>
+    <div className="table-card"><div className="table-head"><span>DOCUMENT</span><span>RBI REFERENCE</span><span>STATUS</span><span>VERSION</span></div>{filtered.map((doc) => <button type="button" className="table-row" key={doc.id} onClick={() => onSelect(doc.id)}><span className="doc-name">{doc.title}<small>View document history and evidence <span aria-hidden="true">↗</span></small></span><span className="doc-ref">{doc.rbi_ref || '—'}</span><span><Lifecycle state={doc.lifecycle_state} /></span><span className="version-label">v{doc.version_no}</span></button>)}{filtered.length === 0 && <div className="table-empty">{busy ? 'Loading documents…' : 'No documents match these filters.'}</div>}</div>
+    <p className="table-footnote"><span className="source-bullet"/> This is a curated, growing corpus. It is not a complete RBI search index.</p>
+  </>
 }
 
 function DocumentCard({ doc, onClick }: { doc: RelevantDocument; onClick: () => void }) {
@@ -371,6 +362,7 @@ function Explorer({ documents, selectedId, setSelectedId, selected, relations, l
     <div className="explorer-layout"><section className="explorer-main">
       {selected ? <>
         <div className="document-title-card"><div><span className="card-ref">{selected.rbi_ref || selected.source_key}</span><h2>{selected.title}</h2></div><Lifecycle state={selected.lifecycle_state} /></div>
+        {selected.lifecycle_state === 'REPEALED' && <aside className="repeal-note"><b>What “repealed” means</b><p>RBI has withdrawn this instrument from legal force. A business needs this status to avoid relying on an obsolete rule and to check whether another current direction replaced it. Repeal does not, by itself, prove a replacement; follow only the verified links below.</p><small>RAAY shows source status and evidence. It does not decide your legal obligations.</small></aside>}
         <div className="timeline-label"><span>VERIFIED RELATIONSHIP HISTORY</span><span>{verified.length} {verified.length === 1 ? 'LINK' : 'LINKS'}</span></div>
         {loading ? <div className="loading-card"><span className="spinner"/><span>Looking up verified relationships…</span></div> : verified.map((relation) => <article className="relation-card" key={relation.id}>
           <div className="relation-top"><span className="relation-type">{relation.relation_type.replaceAll('_', ' ')}</span><span className="verified"><i /> VERIFIED</span></div>
