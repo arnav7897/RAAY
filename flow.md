@@ -200,7 +200,7 @@ An NBFC-MFI matches RBI/2025-26/44 as `DIRECT`, while NBFC-ICC is `NOT_ESTABLISH
 - Unsupported results return `Insufficient evidence in the selected documents`.
 - Fallback diagnostics distinguish empty retrieval, empty model output, empty model claims, and rejected citations without logging prompts or quotes.
 - Ollama uses one reused async HTTP client per API process and keeps the model loaded for ten minutes after a request.
-- Docker API reaches host Ollama through `host.docker.internal`; the host service binds only to Docker's default bridge address.
+- Docker API reaches host Ollama through `host.docker.internal`; Ollama remains bound to host loopback on this Docker Desktop setup.
 - Local `BAAI/bge-m3` encodes current clauses and questions into normalized 1024-dimensional vectors.
 - Additive `clause_embeddings` table keeps each model's vectors separate from clauses.
 - Explicit `python -m app.embeddings.run` job embeds unindexed clauses and is safe to rerun.
