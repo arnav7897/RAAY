@@ -16,6 +16,12 @@ class EvidenceLocation:
 
 
 @dataclass(frozen=True, slots=True)
+class EvidenceBlock:
+    text: str
+    location: EvidenceLocation
+
+
+@dataclass(frozen=True, slots=True)
 class ParsedClause:
     path: str
     clause_no: str

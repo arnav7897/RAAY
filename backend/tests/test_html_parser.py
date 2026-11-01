@@ -1,4 +1,4 @@
-from app.parse.html import parse_html
+from app.parse.html import parse_html, parse_html_blocks
 
 
 def test_html_parser_builds_clause_paths_and_dom_locations() -> None:
@@ -45,3 +45,19 @@ def test_html_parser_prefers_rbi_document_table_over_navigation() -> None:
 
     assert [clause.clause_no for clause in result.clauses] == ["8.1"]
     assert result.normalized_text == "8.1 Regulatory clause"
+
+
+def test_html_blocks_keep_unnumbered_relationship_evidence_location() -> None:
+    html = b"""
+    <html><body><table class="td"><tr><td>
+      <p>Please refer to paragraph 8.1 of the Master Direction dated March 14, 2022.</p>
+      <p>8.1 Replacement text.</p>
+    </td></tr></table></body></html>
+    """
+
+    blocks = parse_html_blocks(html)
+
+    assert blocks[0].text.startswith("Please refer")
+    assert blocks[0].location.dom_locator is not None
+    assert blocks[0].location.page is None
+    assert blocks[0].location.char_start == 0

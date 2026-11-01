@@ -16,6 +16,13 @@ class Fetcher(Protocol):
 class Repository(Protocol):
     async def latest_hash(self, document_key: str) -> str | None: ...
 
+    async def refresh_unchanged(
+        self,
+        source: GoldDocument,
+        fetched: FetchResult,
+        content_hash: str,
+    ) -> None: ...
+
     async def save_version(
         self,
         source: GoldDocument,
@@ -28,6 +35,7 @@ class Repository(Protocol):
 class InMemoryRepository:
     def __init__(self) -> None:
         self._versions: dict[str, list[tuple[str, ParseResult]]] = defaultdict(list)
+        self._metadata_refreshes: dict[str, int] = defaultdict(int)
 
     async def latest_hash(self, document_key: str) -> str | None:
         versions = self._versions[document_key]
@@ -44,8 +52,20 @@ class InMemoryRepository:
         self._versions[source.key].append((content_hash, parsed))
         return len(self._versions[source.key])
 
+    async def refresh_unchanged(
+        self,
+        source: GoldDocument,
+        fetched: FetchResult,
+        content_hash: str,
+    ) -> None:
+        del fetched, content_hash
+        self._metadata_refreshes[source.key] += 1
+
     def version_count(self, document_key: str) -> int:
         return len(self._versions[document_key])
+
+    def metadata_refresh_count(self, document_key: str) -> int:
+        return self._metadata_refreshes[document_key]
 
 
 def _parse(fetched: FetchResult) -> ParseResult:
@@ -80,6 +100,7 @@ class IngestService:
         content_hash = hashlib.sha256(parsed.normalized_text.encode("utf-8")).hexdigest()
         latest_hash = await self._repository.latest_hash(source.key)
         if latest_hash == content_hash:
+            await self._repository.refresh_unchanged(source, fetched, content_hash)
             return IngestResult(
                 document_key=source.key,
                 content_hash=content_hash,

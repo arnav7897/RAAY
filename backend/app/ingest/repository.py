@@ -67,6 +67,29 @@ class PostgresRepository:
             if cursor.rowcount != 1:
                 raise RuntimeError(f"running ingest record {run_id} was not found")
 
+    async def refresh_unchanged(
+        self,
+        source: GoldDocument,
+        fetched: FetchResult,
+        content_hash: str,
+    ) -> None:
+        async with (
+            await psycopg.AsyncConnection.connect(self._database_url) as connection,
+            connection.transaction(),
+            connection.cursor() as cursor,
+        ):
+            document_id = await self._upsert_document(cursor, source, fetched.url)
+            await cursor.execute(
+                """
+                UPDATE document_versions
+                SET raw_cache_path = COALESCE(raw_cache_path, %s)
+                WHERE document_id = %s AND content_hash = %s
+                """,
+                (fetched.cache_path, document_id, content_hash),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("unchanged document version was not found")
+
     async def save_version(
         self,
         source: GoldDocument,
@@ -149,7 +172,25 @@ class PostgresRepository:
         row = await cursor.fetchone()
         if row is None:
             raise RuntimeError("document upsert did not return an id")
-        return _integer(row[0])
+        document_id = _integer(row[0])
+        aliases = (
+            (source.rbi_ref, "rbi_ref"),
+            (source.dept_ref, "dept_ref"),
+            (source.title, "title"),
+        )
+        for alias, alias_kind in aliases:
+            if alias is None:
+                continue
+            await cursor.execute(
+                """
+                INSERT INTO document_aliases (document_id, alias, alias_kind)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (document_id, alias) DO UPDATE
+                SET alias_kind = EXCLUDED.alias_kind
+                """,
+                (document_id, alias, alias_kind),
+            )
+        return document_id
 
     @staticmethod
     async def _insert_clauses(

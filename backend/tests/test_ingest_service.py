@@ -39,6 +39,7 @@ async def test_unchanged_content_does_not_create_duplicate_version() -> None:
     assert first.created is True
     assert second.created is False
     assert repository.version_count(source.key) == 1
+    assert repository.metadata_refresh_count(source.key) == 1
 
 
 @pytest.mark.asyncio

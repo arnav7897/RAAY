@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException
@@ -30,6 +30,39 @@ class ClauseResponse(BaseModel):
     char_start: int
     char_end: int
     text: str
+
+
+class RelationshipDiffResponse(BaseModel):
+    operation: str
+    old_text: str
+    new_text: str
+
+
+class RelationshipResponse(BaseModel):
+    id: int
+    direction: Literal["OUTGOING", "INCOMING"]
+    source_document_id: int
+    source_rbi_ref: str | None
+    source_title: str
+    target_document_id: int | None
+    target_rbi_ref: str | None
+    target_title: str | None
+    target_ref_raw: str
+    target_clause: str | None
+    relation_type: str
+    evidence_text: str
+    evidence_page: int | None
+    evidence_dom_locator: str | None
+    char_start: int
+    char_end: int
+    source_url: str
+    evidence_type: str
+    verification_status: str
+    extractor: str
+    extractor_version: str
+    old_text: str | None
+    new_text: str | None
+    diff: list[RelationshipDiffResponse]
 
 
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
@@ -117,6 +150,73 @@ async def list_clauses(
     ]
 
 
+@router.get("/{document_id}/relations", response_model=list[RelationshipResponse])
+async def list_relationships(
+    document_id: int, settings: SettingsDependency
+) -> list[RelationshipResponse]:
+    async with (
+        await psycopg.AsyncConnection.connect(settings.database_url) as connection,
+        connection.cursor() as cursor,
+    ):
+        await cursor.execute("SELECT 1 FROM documents WHERE id = %s", (document_id,))
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="document not found")
+        await cursor.execute(
+            """
+            SELECT relation.id,
+                   CASE WHEN relation.source_document_id = %s
+                        THEN 'OUTGOING' ELSE 'INCOMING' END,
+                   source.id, source.rbi_ref, source.title,
+                   target.id, target.rbi_ref, target.title,
+                   relation.target_ref_raw, relation.target_clause,
+                   relation.relation_type, relation.evidence_text,
+                   relation.evidence_page, relation.evidence_dom_locator,
+                   relation.char_start, relation.char_end, relation.source_url,
+                   relation.evidence_type, relation.verification_status,
+                   relation.extractor, relation.extractor_version,
+                   version.old_text, version.new_text,
+                   COALESCE(version.diff_json, '[]'::jsonb)
+            FROM document_relations AS relation
+            JOIN documents AS source ON source.id = relation.source_document_id
+            LEFT JOIN documents AS target ON target.id = relation.target_document_id
+            LEFT JOIN clause_versions AS version ON version.relation_id = relation.id
+            WHERE relation.source_document_id = %s OR relation.target_document_id = %s
+            ORDER BY relation.id
+            """,
+            (document_id, document_id, document_id),
+        )
+        rows = await cursor.fetchall()
+    return [
+        RelationshipResponse(
+            id=_integer(row[0]),
+            direction=_direction(row[1]),
+            source_document_id=_integer(row[2]),
+            source_rbi_ref=_optional_string(row[3]),
+            source_title=_string(row[4]),
+            target_document_id=_optional_integer(row[5]),
+            target_rbi_ref=_optional_string(row[6]),
+            target_title=_optional_string(row[7]),
+            target_ref_raw=_string(row[8]),
+            target_clause=_optional_string(row[9]),
+            relation_type=_string(row[10]),
+            evidence_text=_string(row[11]),
+            evidence_page=_optional_integer(row[12]),
+            evidence_dom_locator=_optional_string(row[13]),
+            char_start=_integer(row[14]),
+            char_end=_integer(row[15]),
+            source_url=_string(row[16]),
+            evidence_type=_string(row[17]),
+            verification_status=_string(row[18]),
+            extractor=_string(row[19]),
+            extractor_version=_string(row[20]),
+            old_text=_optional_string(row[21]),
+            new_text=_optional_string(row[22]),
+            diff=_diff(row[23]),
+        )
+        for row in rows
+    ]
+
+
 def _integer(value: object) -> int:
     if not isinstance(value, int):
         raise TypeError(f"expected integer, got {type(value).__name__}")
@@ -135,3 +235,18 @@ def _string(value: object) -> str:
 
 def _optional_string(value: object) -> str | None:
     return None if value is None else _string(value)
+
+
+def _direction(value: object) -> Literal["OUTGOING", "INCOMING"]:
+    text = _string(value)
+    if text == "OUTGOING":
+        return "OUTGOING"
+    if text == "INCOMING":
+        return "INCOMING"
+    raise ValueError(f"unexpected relationship direction: {text}")
+
+
+def _diff(value: object) -> list[RelationshipDiffResponse]:
+    if not isinstance(value, list):
+        raise TypeError(f"expected relationship diff list, got {type(value).__name__}")
+    return [RelationshipDiffResponse.model_validate(item) for item in value]
