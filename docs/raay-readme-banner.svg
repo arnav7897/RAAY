@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="500" viewBox="0 0 1600 500" role="img" aria-labelledby="title description">
+  <title id="title">RAAY — know what applies, see the evidence</title>
+  <desc id="description">An editorial illustration of RBI regulatory documents connected by verified source evidence.</desc>
+  <rect width="1600" height="500" fill="#f4f0e6"/>
+  <path d="M0 0h15v500H0z" fill="#245c45"/>
+  <path d="M1000 0h600v500h-600z" fill="#193f31"/>
+  <path d="M1000 0h1v500h-1z" fill="#c5a56b" opacity=".72"/>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="82" y="62" width="266" height="36" rx="18" fill="#e5eadf"/>
+    <circle cx="102" cy="80" r="5" fill="#245c45"/>
+    <text x="118" y="85" fill="#355742" font-size="13" font-weight="700" letter-spacing="2.1">REGULATORY EVIDENCE WORKSPACE</text>
+
+    <text x="78" y="208" fill="#29332e" font-family="Georgia, 'Times New Roman', serif" font-size="92" font-weight="700" letter-spacing="-4">RAAY</text>
+    <path d="M82 232h108" stroke="#c5a56b" stroke-width="4"/>
+    <text x="80" y="296" fill="#29332e" font-family="Georgia, 'Times New Roman', serif" font-size="43">Know what applies.</text>
+    <text x="80" y="350" fill="#245c45" font-family="Georgia, 'Times New Roman', serif" font-size="43" font-style="italic">See the evidence.</text>
+    <text x="82" y="400" fill="#5e695f" font-size="17">RBI rules, relationships, and cited answers in one</text>
+    <text x="82" y="426" fill="#5e695f" font-size="17">source-first workspace.</text>
+    <text x="82" y="470" fill="#687366" font-family="'Courier New', monospace" font-size="11" letter-spacing="1.15">OFFICIAL TEXT  /  VERIFIED LINKS  /  TRACEABLE ANSWERS</text>
+  </g>
+
+  <g transform="translate(1060 63)">
+    <path d="M142 210C222 168 274 163 359 200" fill="none" stroke="#c5a56b" stroke-width="2" stroke-dasharray="5 8" opacity=".85"/>
+    <path d="M147 221C224 269 277 276 359 229" fill="none" stroke="#b9c8ae" stroke-width="2" stroke-dasharray="5 8" opacity=".75"/>
+    <circle cx="250" cy="212" r="9" fill="#d8dfc9" stroke="#193f31" stroke-width="5"/>
+
+    <g transform="rotate(-5 133 210)">
+      <rect x="33" y="95" width="217" height="256" rx="8" fill="#132f25" opacity=".22"/>
+      <rect x="25" y="87" width="217" height="256" rx="8" fill="#fffdf8"/>
+      <path d="M25 87h217v43H25z" fill="#e9e1d2"/>
+      <text x="45" y="114" fill="#5b685c" font-family="'Courier New', monospace" font-size="10" letter-spacing="1.2">MASTER DIRECTION</text>
+      <text x="45" y="164" fill="#29332e" font-family="Georgia, 'Times New Roman', serif" font-size="18" font-weight="700">Applicability</text>
+      <path d="M45 183h156M45 197h143M45 211h158M45 225h128" stroke="#b9b6a9" stroke-width="4" stroke-linecap="round"/>
+      <rect x="44" y="250" width="171" height="61" rx="5" fill="#eef1e9"/>
+      <path d="M56 267h143M56 279h127M56 291h103" stroke="#91a687" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="204" cy="323" r="10" fill="#245c45"/>
+      <path d="m199 323 3.5 3.5 6.5-7" fill="none" stroke="#fffdf8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <g transform="rotate(4 422 215)">
+      <rect x="337" y="103" width="191" height="236" rx="8" fill="#10291f" opacity=".24"/>
+      <rect x="329" y="95" width="191" height="236" rx="8" fill="#f6f2e9"/>
+      <path d="M329 95h191v42H329z" fill="#2b6048"/>
+      <text x="348" y="121" fill="#f4f0e6" font-family="'Courier New', monospace" font-size="10" letter-spacing="1.1">AMENDMENT</text>
+      <text x="349" y="171" fill="#29332e" font-family="Georgia, 'Times New Roman', serif" font-size="17" font-weight="700">Source quote</text>
+      <path d="M349 190h144M349 204h124M349 218h143" stroke="#aaa99e" stroke-width="4" stroke-linecap="round"/>
+      <rect x="349" y="246" width="119" height="28" rx="14" fill="#e5eadf"/>
+      <circle cx="364" cy="260" r="4" fill="#245c45"/>
+      <text x="375" y="264" fill="#355742" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="700" letter-spacing=".8">QUOTE VERIFIED</text>
+    </g>
+
+    <g font-family="'Courier New', monospace" font-size="10" letter-spacing="1">
+      <text x="46" y="395" fill="#c3cfb8">CURRENT RULE</text>
+      <text x="375" y="395" fill="#c3cfb8">OFFICIAL SOURCE</text>
+      <text x="278" y="443" fill="#d7dfc8">LINKED BY EVIDENCE</text>
+    </g>
+    <path d="M90 413h129M420 413h35" stroke="#c5a56b" stroke-width="1.5"/>
+  </g>
+</svg>

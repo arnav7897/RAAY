@@ -1,8 +1,21 @@
-# RAAY — Regulatory Relationship Engine for RBI Documents
+<h1 align="center">RAAY</h1>
 
-An evidence-backed system that shows regulated entities which RBI documents apply to them, how those documents connect to existing rules, and what has changed, with the official sentence attached to every claim.
+<p align="center">
+  <img src="docs/raay-readme-banner.svg" alt="RAAY regulatory evidence workspace: know what applies and see the official source evidence." width="100%" />
+</p>
 
-> **Status:** Phase 4 in progress. Scoped FTS retrieval and Gemini cited-answer path are implemented; live citation acceptance is pending.
+<p align="center"><strong>Regulatory relationship engine for RBI documents</strong></p>
+<p align="center">Applicability, verified document history, and cited answers grounded in official text.</p>
+
+<p align="center">
+  <a href="#problem">Product</a> ·
+  <a href="#complete-planned-flow">Architecture</a> ·
+  <a href="#getting-started">Run locally</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#limitations-and-disclaimer">Limits</a>
+</p>
+
+> **Build status:** Phase 5 in progress. Native email/password auth, user-scoped profiles, and focused React screens are implemented; live account-flow acceptance remains. The curated official RBI corpus now has nine documents.
 
 ---
 
@@ -48,9 +61,8 @@ flowchart TD
     DB[(PostgreSQL 16 and pgvector)]
   end
 
-  AUTH[Auth0 Universal Login with PKCE] --> FE
-  FE -->|Bearer token| API
-  API --> TOK[Verify JWT and map Auth0 subject to internal user]
+  FE -->|HttpOnly session cookie| API
+  API --> TOK[Verify session and map to internal user]
 
   subgraph Ingestion[Scheduled official-source ingestion]
     RBI[RBI gold URLs and official listings] --> DISC[Allowlisted keyword discovery]
@@ -71,14 +83,14 @@ flowchart TD
   DB --> APPLY
   APPLY --> GRAPH[Verified relationship graph]
   GRAPH --> RETRIEVE[Staged document, section, and clause retrieval]
-  RETRIEVE --> GEMINI[Provider-neutral Gemini adapter]
-  GEMINI --> CLAIMS[Local Pydantic and citation validation]
+  RETRIEVE --> OLLAMA[Local Ollama qwen2.5:3b]
+  OLLAMA --> CLAIMS[Local Pydantic and citation validation]
   CLAIMS --> ANSWER[Cited answer or insufficient evidence]
   ANSWER --> API
   API --> FE
 ```
 
-One shared regulatory knowledge base serves all users. Authenticated profiles and cached results are isolated by the internal user mapped from the verified Auth0 token. Gemini receives only deterministically retrieved evidence and cannot create verified relationships or bypass citation validation. Design reasons are recorded in [`decision.md`](decision.md).
+One shared regulatory knowledge base serves all users. Authenticated profiles are isolated by the internal user derived from a revocable server-side session. Passwords use Argon2id hashes; browser sessions use HttpOnly cookies. Local Ollama receives only deterministically retrieved evidence and cannot create verified relationships or bypass citation validation. Design reasons are recorded in [`decision.md`](decision.md).
 
 ## Tech stack
 
@@ -89,8 +101,8 @@ One shared regulatory knowledge base serves all users. Authenticated profiles an
 | Ingestion | httpx, selectolax, PyMuPDF (fallback), APScheduler 3, Tesseract (optional OCR) |
 | Matching | rapidfuzz, rule engine, entity ontology |
 | Embeddings | BGE-M3 (default, local, 1024-d); alternatives evaluated in `decision.md` |
-| LLM | Gemini 3.8 Flash behind a provider-neutral interface; planned for Phase 4 |
-| Frontend | React with Vite, TypeScript |
+| Answer LLM | Local Ollama `qwen2.5:3b` with structured JSON output |
+| Frontend | React, TypeScript, Vite, native email/password form |
 
 ## Repository layout
 
@@ -102,7 +114,32 @@ plan.md  decision.md  flow.md  codex.md  README.md  contracts/
 
 ## Getting started
 
-**Prerequisites:** Python 3.12, Docker with Compose, Git. Node.js 20+ is required when frontend work begins. Tesseract remains optional for future OCR fallback.
+**Prerequisites:** Docker with Compose and Git. Node.js is not needed for the Compose frontend. Python 3.12 is needed only for local CLI commands. Tesseract remains optional for future OCR fallback.
+
+### First Docker run
+
+```bash
+cp .env.example .env
+ollama pull qwen2.5:3b
+docker compose up -d --build
+docker compose ps
+docker compose logs -f worker
+```
+
+Ollama can keep its default loopback listener on `127.0.0.1:11434`; Docker Desktop exposes the host service to the API container as `host.docker.internal`. Compose does not publish port `11434`. Set `OLLAMA_BASE_URL=http://host.docker.internal:11434` and `OLLAMA_ANSWER_MODEL=qwen2.5:3b` in `.env`.
+
+On first run, Docker downloads the PostgreSQL/pgvector base image and builds the API, worker, and frontend images with their dependencies. The worker then fetches and ingests the nine URLs listed in `data/gold/corpus.yaml`. The API downloads BGE-M3 weights at startup into `data/huggingface/` if that cache is empty. RBI source files live in `data/raw/`; PostgreSQL records live in the `postgres_data` Docker volume. These caches persist across ordinary container recreation. Removing the database volume deletes database records; removing `data/` deletes downloaded RBI files and embedding weights. Rebuilds reuse Docker layers and cached model files when dependencies and cache directories remain.
+
+The worker does not automatically run relationship, applicability, lifecycle, or embedding reconciliation after gold ingestion. Run those jobs once for a fresh database, then rerun embeddings after adding documents:
+
+```bash
+docker compose exec worker python -m app.relations.run
+docker compose exec worker python -m app.applicability.run
+docker compose exec worker python -m app.lifecycle.run
+docker compose exec worker python -m app.embeddings.run
+```
+
+`docker compose up` does not download every RBI document. It loads only the curated gold list, then polls four RBI listing pages on a schedule and stores only title matches for the configured keywords. This is not a user-specific global regulatory search index.
 
 ```bash
 # 1. Get the code
@@ -119,7 +156,7 @@ docker compose up -d db
 python -m venv .venv && source .venv/bin/activate
 pip install -e 'backend[dev]'
 
-# 5. Load the six-document official RBI gold corpus
+# 5. Load the curated official RBI gold corpus (also done by the Compose worker)
 python -m app.ingest.run --source gold
 
 # Reconcile references and verified relationships after ingestion
@@ -129,18 +166,26 @@ python -m app.relations.run
 python -m app.applicability.run
 python -m app.lifecycle.run
 
+# Embed current clauses locally for semantic retrieval
+python -m app.embeddings.run
+
 # Discover matching documents from one official RBI listing
 python -m app.ingest.run --source drafts
 python -m app.ingest.run --source notifications --keywords 'microfinance,nbfc,know your customer'
 
-# 6. Run the API locally
+# Existing database: apply user/profile and native-auth migrations before app start
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
+  -f /migrations/005_authenticated_profiles.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
+  -f /migrations/006_native_email_auth.sql
+
+# 6. Start app containers (frontend at http://localhost:5173)
+docker compose up -d --build api worker frontend
+
+# 7. Run the API locally instead, if preferred
 uvicorn app.api.main:app --reload
 
-# Or build and run the current containers
-docker compose build api worker
-docker compose up -d api worker
-
-# 7. Tests and static checks
+# 8. Tests and static checks
 cd backend
 ../.venv/bin/pytest -q
 ../.venv/bin/ruff check app tests
@@ -149,9 +194,15 @@ cd backend
 
 All CLI sources are implemented: `gold`, `drafts`, `notifications`, `masterdirs`, and `withdrawn`. Live sources filter document titles using `RBI_DISCOVERY_KEYWORDS`, accept only known official RBI detail endpoints, and stop after the configured per-source match cap. `--keywords` provides a one-run override.
 
-The worker first idempotently loads the gold corpus, then schedules drafts and notifications every three hours on weekdays and Master Directions and withdrawn circulars daily. Set `RBI_SCHEDULER_RUN_ON_STARTUP=true` only when an immediate poll of all four live listings is wanted; scheduled polling still runs when it is false.
+The worker first idempotently loads the gold corpus, then schedules drafts and notifications every three hours on weekdays and Master Directions and withdrawn circulars daily. The curated corpus contains:
 
-The API currently exposes `GET /health`, `GET /documents`, `GET /documents/{id}/clauses`, `GET /documents/{id}/relations`, and `POST /questions`. Gold ingestion is idempotent: an unchanged immediate rerun creates zero document versions, repairs missing raw-cache metadata, and records the run in `ingest_runs`. Relationship and applicability reconciliation are also idempotent. The withdrawn-source run caches the official table; relationship reconciliation parses exact table rows into verified repeal evidence. Lifecycle recomputation uses only verified relationships. Question answering uses verified relationship expansion, PostgreSQL full-text retrieval, Gemini structured claims, and exact quote checks.
+- Microfinance Loans Directions (2022), NBFC-MFI Directions (2025), qualifying-assets review (2025), and the 2025 circular-withdrawal notice.
+- KYC Directions (2016) and its 2024 amendment.
+- NBFC IT Governance (2023), NBFC Fraud Risk Management (2024), and Internal Ombudsman (2023) Directions.
+
+This is a small evidence-tested starting corpus, not complete RBI coverage. Set `RBI_SCHEDULER_RUN_ON_STARTUP=true` only when an immediate poll of all four live listings is wanted; scheduled polling still runs when it is false.
+
+The API exposes public `GET /health`; all document, relationship, profile, relevant-feed, and question routes require a valid native session cookie. Passwords are Argon2id-hashed; sessions are random, revocable, and stored by digest. Email verification and password reset are not implemented; keep this prototype private. Gold ingestion is idempotent: an unchanged rerun creates zero document versions, repairs missing raw-cache metadata, and records the run in `ingest_runs`. Relationship and applicability reconciliation are also idempotent. The withdrawn-source run caches the official table; relationship reconciliation parses exact table rows into verified repeal evidence. Lifecycle recomputation uses only verified relationships. Question answering uses verified relationship expansion, PostgreSQL full-text and local BGE-M3 dense retrieval, local Ollama structured claims, and exact quote checks. Stage timing logs expose retrieval, embedding, LLM, verification, and total durations without question text or quotes. Run `python -m app.embeddings.run` after ingesting new documents; the job skips clauses already embedded with the selected model.
 
 For an existing Compose database, apply additive schema changes before reconciliation:
 
@@ -161,6 +212,12 @@ docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
   -f /docker-entrypoint-initdb.d/001-schema.sql
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
   -f /docker-entrypoint-initdb.d/002-seed-ontology.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
+  -f /migrations/004_clause_embeddings.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
+  -f /migrations/005_authenticated_profiles.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
+  -f /migrations/006_native_email_auth.sql
 docker compose exec -T worker python -m app.relations.run
 docker compose exec -T worker python -m app.applicability.run
 docker compose exec -T worker python -m app.lifecycle.run
@@ -180,9 +237,15 @@ docker compose exec -T worker python -m app.lifecycle.run
 | `RBI_SCHEDULER_TIMEZONE` | Timezone used by periodic polling (default `Asia/Kolkata`) |
 | `RBI_SCHEDULER_RUN_ON_STARTUP` | Whether the worker immediately polls all live listings after gold bootstrap |
 | `EMBEDDING_MODEL` | Embedding model name (default `BAAI/bge-m3`) |
-| `GEMINI_EXTRACT_MODEL`, `GEMINI_ANSWER_MODEL` | Gemini model identifiers for later extraction and answers |
-| `GEMINI_API_KEY` | Gemini API key; not used by Phase 1 ingestion |
-| `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `AUTH0_CLIENT_ID` | Auth0 values for the planned authenticated UI/API |
+| `EMBEDDING_DEVICE` | Local model device (default `cpu`; set to a supported CUDA device when available) |
+| `EMBEDDING_CPU_THREADS` | Torch CPU thread cap for BGE-M3 (default `4`) |
+| `EMBEDDING_BATCH_SIZE` | Number of clauses encoded per batch (default `32`) |
+| `OLLAMA_BASE_URL` | Ollama server URL reachable from the API container (default `http://host.docker.internal:11434`) |
+| `OLLAMA_ANSWER_MODEL` | Local answer model (default `qwen2.5:3b`) |
+| `OLLAMA_TIMEOUT_SECONDS` | Ollama request timeout in seconds (default `120`) |
+| `SESSION_COOKIE_SECURE` | Set `true` when serving over HTTPS; keep `false` for localhost |
+| `SESSION_TTL_HOURS` | Server-side session lifetime (default `168` hours) |
+| `FRONTEND_ORIGIN` | Allowed browser origin for cookie-authenticated requests |
 
 Never commit real keys. All variables will be listed in `.env.example`.
 
@@ -197,7 +260,7 @@ Never commit real keys. All variables will be listed in `.env.example`.
 
 ## Current status
 
-Phase 3 acceptance passes: the ontology and matcher distinguish NBFC-MFI from NBFC-ICC, and RBI/2025-26/44 is `REPEALED` from the official withdrawn-circular table. Phase 4 is in progress. Live question answering returned the 60% requirement with a quote verified against clause 8.1 and its official RBI DOM location. Semantic retrieval and remaining Phase 4 edge cases remain. The Phase 2 historical old-text diff remains deferred. See [`flow.md`](flow.md) for exact implementation history.
+Phases 1–3 are implemented. Phase 4 returns a grounded 60% answer with verified quote and RBI DOM locator; BGE-M3 vectors have been indexed locally. Phase 5 includes native email/password auth, isolated profiles, relevance matching, and focused overview, regulations, profile, explorer, and question screens. Live account flows and cross-user acceptance remain. Email verification and password reset are not implemented; keep this prototype private. The Phase 2 official historical old-text diff remains deferred. See [`flow.md`](flow.md) for implementation history.
 
 ## Limitations and disclaimer
 
