@@ -14,9 +14,6 @@
   <a href="#configuration">Configuration</a> ·
   <a href="#limitations-and-disclaimer">Limits</a>
 </p>
-
-> **Build status:** Phase 5 in progress. Native email/password auth, user-scoped profiles, and focused React screens are implemented; live account-flow acceptance remains. The curated official RBI corpus now has nine documents.
-
 ---
 
 ## Problem
