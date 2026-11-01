@@ -1,4 +1,4 @@
-<h1 align="center">RAAY</h1>
+<h1 align="center">RAAY By Team WhoCares</h1>
 
 <p align="center">
   <img src="docs/raay-readme-banner.svg" alt="RAAY regulatory evidence workspace: know what applies and see the official source evidence." height="100%" />
