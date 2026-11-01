@@ -6,6 +6,7 @@ from psycopg.types.json import Jsonb
 from app.relations.diff import DiffChunk
 from app.relations.models import RelationshipEvidence
 from app.relations.resolve import DocumentRecord
+from app.relations.withdrawal import WithdrawalSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +89,43 @@ class RelationshipRepository:
                 normalized_text=_string(row[6]),
             )
             for row in rows
+        )
+
+    async def consolidation_document_id(self) -> int:
+        async with (
+            await psycopg.AsyncConnection.connect(self._database_url) as connection,
+            connection.cursor() as cursor,
+        ):
+            await cursor.execute(
+                "SELECT id FROM documents WHERE source_key = %s",
+                ("consolidation-withdrawal-2025",),
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            raise RuntimeError("consolidation withdrawal document is not ingested")
+        return _integer(row[0])
+
+    async def latest_withdrawal_snapshot(self) -> WithdrawalSnapshot | None:
+        async with (
+            await psycopg.AsyncConnection.connect(self._database_url) as connection,
+            connection.cursor() as cursor,
+        ):
+            await cursor.execute(
+                """
+                SELECT details #>> '{documents,discovery,cache_path}'
+                FROM ingest_runs
+                WHERE source = 'withdrawn' AND status = 'SUCCEEDED'
+                  AND details #>> '{documents,discovery,cache_path}' IS NOT NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        return WithdrawalSnapshot(
+            cache_path=_string(row[0]),
+            source_url="https://www.rbi.org.in/Scripts/NotificationUserWithdrawnCircular.aspx",
         )
 
     async def save_relationship(self, relationship: RelationshipEvidence) -> int:

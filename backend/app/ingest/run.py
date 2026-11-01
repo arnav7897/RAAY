@@ -78,6 +78,7 @@ async def run_source(
             )
             outcomes["discovery"] = {
                 "listing_url": listing_url,
+                "cache_path": listing.cache_path,
                 "keywords": list(keywords),
                 "matches": len(sources),
             }

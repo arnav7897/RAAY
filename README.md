@@ -2,7 +2,7 @@
 
 An evidence-backed system that shows regulated entities which RBI documents apply to them, how those documents connect to existing rules, and what has changed, with the official sentence attached to every claim.
 
-> **Status:** Phase 1 in progress. Gold ingestion, capped keyword discovery from four official RBI listings, periodic polling, immutable versions, HTML/PDF parsing, PostgreSQL storage, and the read API are implemented.
+> **Status:** Phase 4 in progress. Scoped FTS retrieval and Gemini cited-answer path are implemented; live citation acceptance is pending.
 
 ---
 
@@ -35,22 +35,50 @@ Core ideas:
 - Ask questions scoped to selected documents and get cited answers, or "insufficient evidence".
 - *(Planned)* Draft verified feedback on a draft rule; receive alerts.
 
-## Architecture
+## Complete planned flow
+
+This diagram is the end-to-end target for the MVP. It includes later phases that are not implemented yet. For the smaller, phase-by-phase record of code that exists today, see [`flow.md`](flow.md).
 
 ```mermaid
-flowchart LR
-  subgraph A[Ingestion - scheduled]
-    S[RBI listing pages] --> P[Parse to clause tree] --> R[References + amendment verbs] --> V[Verify relationships] --> L[Lifecycle + applicability]
+flowchart TD
+  subgraph Runtime[Docker Compose runtime]
+    FE[React and TypeScript frontend]
+    API[FastAPI API]
+    WORKER[Scheduled ingestion worker]
+    DB[(PostgreSQL 16 and pgvector)]
   end
-  KB[(Global knowledge base<br/>PostgreSQL + pgvector)]
-  L --> KB
-  subgraph B[User request]
-    U[Profile + question] --> M[Applicability match] --> G[Verified graph] --> C[Staged clause retrieval] --> X[Cited answer]
+
+  AUTH[Auth0 Universal Login with PKCE] --> FE
+  FE -->|Bearer token| API
+  API --> TOK[Verify JWT and map Auth0 subject to internal user]
+
+  subgraph Ingestion[Scheduled official-source ingestion]
+    RBI[RBI gold URLs and official listings] --> DISC[Allowlisted keyword discovery]
+    DISC --> FETCH[Polite fetch and raw cache]
+    FETCH --> HASH[Normalize and hash]
+    HASH --> VERSION[Immutable document version]
+    VERSION --> PARSE[HTML or PDF clause parsing]
+    PARSE --> REFS[Reference and legal-verb extraction]
+    REFS --> VERIFY[Resolve target and validate evidence quote]
+    VERIFY --> LIFE[Relationships, lifecycle events, and diffs]
   end
-  KB --> M
+
+  WORKER --> RBI
+  LIFE --> DB
+
+  TOK --> PROFILE[Owned organization profile]
+  PROFILE --> APPLY[Applicability rules]
+  DB --> APPLY
+  APPLY --> GRAPH[Verified relationship graph]
+  GRAPH --> RETRIEVE[Staged document, section, and clause retrieval]
+  RETRIEVE --> GEMINI[Provider-neutral Gemini adapter]
+  GEMINI --> CLAIMS[Local Pydantic and citation validation]
+  CLAIMS --> ANSWER[Cited answer or insufficient evidence]
+  ANSWER --> API
+  API --> FE
 ```
 
-One shared knowledge base serves all users; per-user data is limited to the profile, cached results and drafts. Detailed diagrams and build status: [`flow.md`](flow.md). Design reasons: [`decision.md`](decision.md).
+One shared regulatory knowledge base serves all users. Authenticated profiles and cached results are isolated by the internal user mapped from the verified Auth0 token. Gemini receives only deterministically retrieved evidence and cannot create verified relationships or bypass citation validation. Design reasons are recorded in [`decision.md`](decision.md).
 
 ## Tech stack
 
@@ -94,6 +122,13 @@ pip install -e 'backend[dev]'
 # 5. Load the six-document official RBI gold corpus
 python -m app.ingest.run --source gold
 
+# Reconcile references and verified relationships after ingestion
+python -m app.relations.run
+
+# Reconcile applicability facts and recompute lifecycle states
+python -m app.applicability.run
+python -m app.lifecycle.run
+
 # Discover matching documents from one official RBI listing
 python -m app.ingest.run --source drafts
 python -m app.ingest.run --source notifications --keywords 'microfinance,nbfc,know your customer'
@@ -116,7 +151,20 @@ All CLI sources are implemented: `gold`, `drafts`, `notifications`, `masterdirs`
 
 The worker first idempotently loads the gold corpus, then schedules drafts and notifications every three hours on weekdays and Master Directions and withdrawn circulars daily. Set `RBI_SCHEDULER_RUN_ON_STARTUP=true` only when an immediate poll of all four live listings is wanted; scheduled polling still runs when it is false.
 
-The API currently exposes `GET /health`, `GET /documents`, and `GET /documents/{id}/clauses`. Gold ingestion is idempotent: an unchanged immediate rerun creates zero document versions and records the run in `ingest_runs`.
+The API currently exposes `GET /health`, `GET /documents`, `GET /documents/{id}/clauses`, `GET /documents/{id}/relations`, and `POST /questions`. Gold ingestion is idempotent: an unchanged immediate rerun creates zero document versions, repairs missing raw-cache metadata, and records the run in `ingest_runs`. Relationship and applicability reconciliation are also idempotent. The withdrawn-source run caches the official table; relationship reconciliation parses exact table rows into verified repeal evidence. Lifecycle recomputation uses only verified relationships. Question answering uses verified relationship expansion, PostgreSQL full-text retrieval, Gemini structured claims, and exact quote checks.
+
+For an existing Compose database, apply additive schema changes before reconciliation:
+
+```bash
+docker compose up -d db
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
+  -f /docker-entrypoint-initdb.d/001-schema.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d raay \
+  -f /docker-entrypoint-initdb.d/002-seed-ontology.sql
+docker compose exec -T worker python -m app.relations.run
+docker compose exec -T worker python -m app.applicability.run
+docker compose exec -T worker python -m app.lifecycle.run
+```
 
 ## Configuration
 
@@ -144,12 +192,12 @@ Never commit real keys. All variables will be listed in `.env.example`.
 |------|---------|
 | [`plan.md`](plan.md) | 12-hour plan, phases, deliverables, acceptance checks |
 | [`decision.md`](decision.md) | Design decisions and the reasons for them |
-| [`flow.md`](flow.md) | Current architecture flowcharts and build status |
+| [`flow.md`](flow.md) | Phase-by-phase record of the implementation that exists today |
 | [`codex.md`](codex.md) | Instructions for the Codex coding agent (copy to `AGENTS.md`) |
 
 ## Current status
 
-Phase 1 is in progress. Six official RBI documents are source-locked; the ingestion/versioning/parser core, read API, live keyword discovery, audited CLI runs, and scheduled Compose worker pass their checks. A live KYC draft was ingested and its immediate rerun created zero versions. The Phase 0 labelled-pair fixture remains pending. See [`flow.md`](flow.md) for component status.
+Phase 3 acceptance passes: the ontology and matcher distinguish NBFC-MFI from NBFC-ICC, and RBI/2025-26/44 is `REPEALED` from the official withdrawn-circular table. Phase 4 is in progress. Live question answering returned the 60% requirement with a quote verified against clause 8.1 and its official RBI DOM location. Semantic retrieval and remaining Phase 4 edge cases remain. The Phase 2 historical old-text diff remains deferred. See [`flow.md`](flow.md) for exact implementation history.
 
 ## Limitations and disclaimer
 

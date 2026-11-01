@@ -270,6 +270,89 @@ Status values: `Accepted` · `Provisional` (needs a test or answer) · `Supersed
 
 ---
 
+### D-042 — Historical diffs require a retrievable official RBI artifact
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** At the user's direction, Phase 2 will source-lock an official historical RBI snapshot or PDF containing the superseded paragraph before storing an old-versus-new regulatory diff. Search snippets, mirrors, and reconstructed wording are not accepted as evidence.
+- **Why:** RBI's live 2022 Microfinance Master Direction now contains the amended 60 percent paragraph, while the Phase 2 acceptance case requires the prior 75 percent text. Preserving a retrievable official artifact keeps both sides of the diff reproducible and consistent with D-028 and D-035.
+- **Rejected:** Marking guessed or search-snippet text as the historical clause, and completing the acceptance check with `old_text` unavailable.
+- **Open:** RBI currently links the original annex at `https://rbidocs.rbi.org.in/rdocs/content/pdfs/89MD14032022ANNEX_A1.pdf`, but that host returned an empty response to validated HTTP clients in the build environment. The file must be retrieved through an official working route before it is hashed and added to the corpus.
+
+---
+
+### D-043 — Flow documentation shows only current implementation
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Keep the complete target architecture in `README.md` and `plan.md`. Make `flow.md` a phase-by-phase record containing only implemented and actively implemented components, their current data flow, and remaining gaps in the active phase.
+- **Why:** The user wants to understand what changed in each phase without planned components being visually mixed with working behavior.
+- **Rejected:** A single future-state diagram with status colors for both built and unbuilt components.
+- **Open:** Add each future phase to `flow.md` only when implementation for that phase begins.
+
+---
+
+### D-044 — Relationship reconciliation is pull-based and idempotent
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Run relationship extraction after ingestion through `python -m app.relations.run`. Persist every resolved, unresolved, or candidate reference with deterministic evidence metadata. Promote a strong legal relationship to `VERIFIED` only when an explicit instruction, resolved target, and source quote span all pass. Expose both incoming and outgoing rows through `GET /documents/{id}/relations`.
+- **Why:** Ingestion remains independently rerunnable, while a unique evidence key makes reconciliation safe to retry. The live run persisted 251 unique rows, including the required RBI/2025-26/44 `AMENDS` edge to paragraph 8.1; a second run kept 251 rows.
+- **Rejected:** Creating edges inside ingestion, replacing rows wholesale, and promoting fuzzy or semantic references to verified legal relationships.
+- **Open:** Historical old/new text remains governed by D-042. Candidate volume will be evaluated against reviewed labels before thresholds change.
+
+### D-045 — Unchanged ingestion repairs cache metadata
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** When normalized content is unchanged, update mutable document metadata and fill a missing `raw_cache_path` on the existing version without creating a new version or changing its retrieval timestamp.
+- **Why:** Earlier database rows predated cache-path persistence. Relationship reconciliation needs raw HTML or PDF to reconstruct source-specific evidence blocks, while immutable regulatory content and version numbering must remain unchanged.
+- **Rejected:** Creating duplicate versions solely to attach a cache path and using normalized text without a page or DOM locator.
+- **Open:** Sources whose raw files no longer exist are reported and skipped until re-ingested.
+
+### D-046 — Continue after deferring the unavailable historical diff
+- **Date:** 2026-11-01 · **Status:** Accepted by user
+- **Decision:** Continue to Phase 3 without the official historical 75 percent paragraph. Keep the RBI/2025-26/44 old/new acceptance case marked incomplete and use an independent deterministic sentence-diff test for code behavior only.
+- **Why:** The downloaded RBI URL now returns a two-page July 2025 Key Facts Statement annex, not the original March 2022 directions, and contains neither paragraph 8.1 nor 75 percent. The user chose to continue rather than block later independent work.
+- **Rejected:** Treating the wrong PDF, a search snippet, reconstructed wording, or a synthetic test as official historical proof.
+- **Open:** Complete the deferred acceptance case if a reproducible official historical artifact becomes available.
+
+### D-047 — Applicability uses ontology subsumption with exclusion precedence
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Store evidence-backed `INCLUDES` and `EXCLUDES` facts against entity ontology codes. Match profile entities through ontology ancestry. A matching exclusion overrides every inclusion; missing or unmet conditions produce at most `POTENTIAL`.
+- **Why:** This represents RBI addressees directly, supports NBFC-MFI as a subtype of NBFC, and prevents broad parent rules from overriding explicit exclusions. Sixteen table-driven cases pass, including NBFC subsumption and Payments Bank exclusion.
+- **Rejected:** Flat string equality, numeric relevance percentages, and allowing an inclusion to override an exclusion.
+- **Open:** Additional entity types and condition keys require official evidence plus reviewed tests.
+
+### D-048 — Lifecycle changes require verified edges
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Compute lifecycle from effective dates and `VERIFIED` relationships only. Incoming `REPEALS` yields `REPEALED`; incoming `REPLACES` or outgoing `CONSOLIDATED_INTO` yields `SUPERSEDED`; amendment adds a label without changing effective state.
+- **Why:** A withdrawal watermark, title similarity, or unverified reference does not establish the legal event or its target. The current live corpus has no verified consolidation edge for RBI/2025-26/44, so its stored state remains `IN_FORCE` despite the planned historical demo label.
+- **Rejected:** Inferring historical status from page decoration, publication chronology, or candidate relationships.
+- **Open:** Integrate the official withdrawn-circular annex into verified relationship reconciliation to complete the live lifecycle acceptance case.
+
+### D-049 — Official withdrawal evidence establishes repeal, not consolidation
+- **Date:** 2026-11-01 · **Status:** Accepted; completes the open validation in D-048
+- **Decision:** Parse the official RBI Circulars Withdrawn table as deterministic `REPEAL_LIST` evidence. Create a `VERIFIED REPEALS` relationship only when an exact table reference resolves to an ingested document. Derive `REPEALED` and the label `HISTORICAL — repealed` from that edge. Do not infer a consolidation target when the table does not name one.
+- **Why:** The official table lists `DoR.FIN.REC.25/03.10.038/2025-26` (`RBI/2025-26/44`), “Review of Qualifying Assets Criteria,” dated 6 June 2025. It proves withdrawal. It does not identify a replacement or consolidation destination. Live reconciliation now stores verified repeal evidence from the official page and lifecycle computation marks the document `REPEALED`.
+- **Rejected:** Keeping the document `IN_FORCE` after verified withdrawal evidence, deriving `HISTORICAL — consolidated` from chronology, or treating keyword discovery results as the repeal evidence.
+- **Open:** A `CONSOLIDATED_INTO` relationship requires separate explicit official evidence naming its target.
+
+### D-050 — Answer fallback records the failing evidence stage
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Keep unsupported or unverifiable Gemini answers on the deterministic insufficient-evidence path, and log a reason code that distinguishes empty retrieval, empty model output, empty claims, and invalid clause/quote citations. Prompt Gemini to return a cited claim when retrieved text directly answers the question.
+- **Why:** A successful HTTP response with an insufficient-evidence body did not distinguish model abstention from quote-verification rejection. Stage-specific logs diagnose the answer path without recording questions, quotes, or secrets.
+- **Rejected:** Returning unverified model text or logging regulatory/user content to diagnose failures.
+- **Open:** Recheck the qualifying-assets question after the API image is rebuilt; inspect only the reason code if fallback continues.
+
+### D-051 — Gemini request timeout uses SDK milliseconds
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Keep `GEMINI_TIMEOUT_SECONDS` in seconds for application configuration and convert it to milliseconds when passing `timeout` to `google-genai` Interactions API.
+- **Why:** The SDK converts its per-request timeout from milliseconds to seconds for HTTP transport. Passing `30` for a 30-second setting produced a 30-millisecond timeout, confirmed by the live `APITimeoutError` stack trace.
+- **Rejected:** Changing the environment variable to an ambiguous millisecond value or relying on the SDK's unbounded default.
+- **Open:** Rebuild the API and confirm a live cited answer returns within the configured timeout.
+
+### D-052 — Live answer acceptance requires source quote and location
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Accept a Phase 4 answer only when the question API returns a claim whose quote is found in the cited retrieved clause and whose response includes the official source URL and page or DOM location.
+- **Why:** After fixing query matching and Gemini timeout units, a live request returned the 60 percent qualifying-assets requirement, a matching quote from clause 8.1, and its RBI HTML DOM locator.
+- **Rejected:** Treating an HTTP 200 response or unsupported fallback as proof that grounded answering works.
+- **Open:** Finish semantic retrieval evaluation and the remaining Phase 4 edge cases.
+
+---
+
 ## Template for new entries
 
 ```

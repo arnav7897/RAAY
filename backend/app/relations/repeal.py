@@ -2,12 +2,23 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
+from selectolax.parser import HTMLParser
+
+from app.parse.models import EvidenceLocation
+from app.parse.text import normalize_text
+
 
 @dataclass(frozen=True, slots=True)
 class RepealRow:
     reference: str
     published_at: str
     title: str
+
+
+@dataclass(frozen=True, slots=True)
+class RepealEvidenceRow(RepealRow):
+    evidence_text: str
+    location: EvidenceLocation
 
 
 _REFERENCE = (
@@ -47,6 +58,62 @@ def parse_repeal_rows(text: str) -> tuple[RepealRow, ...]:
                 reference=match.group("reference"),
                 published_at=_date(match.group("date")),
                 title=match.group("title"),
+            )
+        )
+    return tuple(rows)
+
+
+def parse_repeal_html(payload: bytes) -> tuple[RepealEvidenceRow, ...]:
+    tree = HTMLParser(payload)
+    rows: list[RepealEvidenceRow] = []
+    cursor = 0
+    for ordinal, row in enumerate(tree.css("tr"), start=1):
+        row_text = normalize_text(row.text(separator=" ", strip=True))
+        if not row_text:
+            continue
+        if cursor:
+            cursor += 1
+        start = cursor
+        cursor += len(row_text)
+        cells = [normalize_text(cell.text(separator=" ", strip=True)) for cell in row.css("td")]
+        reference_index: int | None = None
+        reference_match: re.Match[str] | None = None
+        for index, cell in enumerate(cells):
+            match = re.search(_REFERENCE, cell, re.IGNORECASE)
+            if match is not None:
+                reference_index = index
+                reference_match = match
+                break
+        if reference_index is None or reference_match is None:
+            continue
+        following = cells[reference_index + 1 :]
+        date_value = next(
+            (
+                match.group(0)
+                for cell in following
+                if (match := re.search(_DATE, cell, re.IGNORECASE))
+            ),
+            None,
+        )
+        if date_value is None or not following:
+            continue
+        title = next(
+            (cell for cell in following if re.search(_DATE, cell, re.IGNORECASE) is None),
+            "",
+        )
+        if not title:
+            continue
+        rows.append(
+            RepealEvidenceRow(
+                reference=reference_match.group(0),
+                published_at=_date(date_value),
+                title=title,
+                evidence_text=row_text,
+                location=EvidenceLocation(
+                    char_start=start,
+                    char_end=cursor,
+                    dom_locator=f"tr:nth-of-type({ordinal})",
+                ),
             )
         )
     return tuple(rows)

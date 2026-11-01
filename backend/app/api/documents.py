@@ -15,6 +15,8 @@ class DocumentSummary(BaseModel):
     rbi_ref: str | None
     title: str
     published_at: str | None
+    effective_at: str | None
+    lifecycle_state: str | None
     source_url: str
     version_no: int
     content_hash: str
@@ -77,7 +79,8 @@ async def list_documents(settings: SettingsDependency) -> list[DocumentSummary]:
         await cursor.execute(
             """
             SELECT document.id, document.source_key, document.rbi_ref, document.title,
-                   document.published_at::text, document.source_url,
+                   document.published_at::text, document.effective_at::text,
+                   document.lifecycle_state::text, document.source_url,
                    version.version_no, version.content_hash
             FROM documents AS document
             JOIN LATERAL (
@@ -98,9 +101,11 @@ async def list_documents(settings: SettingsDependency) -> list[DocumentSummary]:
             rbi_ref=_optional_string(row[2]),
             title=_string(row[3]),
             published_at=_optional_string(row[4]),
-            source_url=_string(row[5]),
-            version_no=_integer(row[6]),
-            content_hash=_string(row[7]),
+            effective_at=_optional_string(row[5]),
+            lifecycle_state=_optional_string(row[6]),
+            source_url=_string(row[7]),
+            version_no=_integer(row[8]),
+            content_hash=_string(row[9]),
         )
         for row in rows
     ]

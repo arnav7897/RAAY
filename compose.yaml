@@ -15,6 +15,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+      - ./db/seed_ontology.sql:/docker-entrypoint-initdb.d/002-seed-ontology.sql:ro
 
   api:
     build: ./backend

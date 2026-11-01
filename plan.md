@@ -2,7 +2,7 @@
 
 > Goal: prove, with source-text evidence, (A) which RBI documents relate to which, (B) whether a document applies to a stakeholder, (C) which clauses matter. LLMs may *propose*; deterministic code *verifies*.
 
-**Current status:** Phase 1 in progress. The six-source manifest, immutable versioning, HTML/PDF parsing, database schema, read API, keyword-based live discovery and periodic polling are implemented; Phase 0 labelled pairs remain pending.
+**Current status:** Phase 4 in progress. Ingestion, versioning, relationship persistence, applicability matching, evidence-backed repeal lifecycle, scoped lexical retrieval, and Gemini structured-answer path are implemented. Live citation acceptance, Phase 0 labelled pairs, and the deferred Phase 2 historical diff remain pending.
 
 ## Product flow: problem and user journey
 
@@ -206,6 +206,8 @@ Steps: throttled fetch (cache raw bytes, respect robots), regex IDs, create a ne
 
 ## Phase 2 — References and relationship engine
 
+**Current status:** Partially accepted. Verified relationship persistence and evidence API work. The specific historical 75 percent text is unavailable from a reproducible official artifact, so that old/new acceptance case is deferred. Sentence-diff behavior remains covered by an independent deterministic test case.
+
 ```mermaid
 flowchart LR
   T[Clause text] --> X[Regex: ref ids, 'Please refer to', 'dated', 'ibid']
@@ -232,6 +234,8 @@ Rules: AMENDS/REPLACES/REPEALS only from explicit instruction text or a repeal l
 
 ## Phase 3 — Lifecycle and applicability
 
+**Current status:** Complete with an evidence-driven output correction. Ontology subsumption, exclusions, conditions, deterministic addressee extraction, persistence, and lifecycle computation are implemented. The official withdrawn-circular table verifies repeal but names no consolidation target.
+
 ```mermaid
 flowchart LR
   E[Verified edges] --> LC[Compute effective state and derived labels]
@@ -243,9 +247,11 @@ flowchart LR
 
 Rules: excluded entity ⇒ never DIRECT; unmet condition (e.g., deposit-taking, layer) ⇒ POTENTIAL at best; date logic marks `proposed / effective / historical / repealed`.
 **Deliverables:** `lifecycle/`, `applicability/` with ontology seed (NBFC, NBFC-ICC, NBFC-MFI, layers, banks), table-driven tests (≥15 profile×doc cases).
-**Output:** for NBFC-MFI profile × RBI/2025-26/44 → `DIRECT`, reason "addressed to all NBFC-MFIs", status `HISTORICAL — consolidated`. For plain NBFC-ICC profile → `NOT_ESTABLISHED`.
+**Validated output:** for NBFC-MFI profile × RBI/2025-26/44 → `DIRECT`, reason “addressed to all NBFC-MFIs,” status `HISTORICAL — repealed`. For plain NBFC-ICC profile → `NOT_ESTABLISHED`. `HISTORICAL — consolidated` is forbidden until separate official evidence names the consolidation target.
 
 ## Phase 4 — Hierarchical retrieval and grounded answers
+
+**Current status:** In progress. Scoped current-version FTS retrieval, verified-edge expansion, Gemini Interactions integration, structured claims, and local quote validation are implemented. A live question returned a claim whose quote matched clause 8.1 and included its official RBI source location. Semantic retrieval and remaining Phase 4 edge cases remain.
 
 ```mermaid
 flowchart LR
@@ -292,7 +298,7 @@ flowchart LR
 1. Profile: NBFC-MFI, non-deposit-taking, microfinance lending.
 2. Open RBI/2025-26/44 → `DIRECT`, show addressee quote.
 3. Explorer: AMENDS → MD 2022 para 8.1, show old/new diff.
-4. Lifecycle: show the consolidation into the 2025 MFI Directions (only if the repeal evidence is VERIFIED).
+4. Lifecycle: show `HISTORICAL — repealed` from verified withdrawal evidence. Show a consolidation target only if separate verified evidence names it.
 5. Switch profile to plain NBFC-ICC → `NOT_ESTABLISHED`.
 6. Ask an unsupported question → "Insufficient evidence".
 

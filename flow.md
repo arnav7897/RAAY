@@ -1,184 +1,237 @@
-# flow.md — Current Architecture and Build Status
+# flow.md — What RAAY Has Built So Far
 
-Living document. It shows what is designed and what has actually been built. Update it at the end of every phase and whenever the architecture changes.
+This document shows only behavior implemented in code so far. The complete target architecture remains in [`README.md`](README.md) and [`plan.md`](plan.md). New implemented behavior is added phase by phase so the build history stays easy to follow.
 
-**Last updated:** 2026-11-01 · **Current phase:** Phase 1 in progress; keyword discovery and scheduled polling accepted
+**Last updated:** 2026-11-01  
+**Current phase:** Phase 4 in progress — scoped FTS and live Gemini citation path accepted; semantic retrieval remains
 
-Status legend: `Planned` means designed only · `In progress` means implementation has started · `Done` means the acceptance check passed · `Changed` means the implementation differs from the plan and has a decision entry
+Status legend: `Done` means implemented and checked · `In progress` means code exists but the phase acceptance path is incomplete
 
 ---
 
-## 1. Overall architecture with build status
+## 1. Current implementation
 
 ```mermaid
 flowchart LR
-  AU[Auth0 Universal Login] --> FE[React frontend]
-  FE --> API[FastAPI]
-  API --> USR[Profile and applicability]
-  API --> GRA[Verified relationship graph]
-  API --> RET[Staged retrieval]
-  RET --> GEM[Gemini adapter]
-  GEM --> VAL[Claim and quote validator]
-  VAL --> FE
+  RBI[RBI official listings] --> SCH[APScheduler worker]
+  SCH --> DIS[Allowlisted title keyword discovery]
+  DIS --> FET[Polite fetch and raw cache]
+  GOLD[Locked gold URLs] --> FET
+  FET --> PAR[HTML or PDF parser]
+  PAR --> VER[Immutable document versions and clauses]
+  VER --> DB[(PostgreSQL and pgvector)]
+  DB --> API[FastAPI document and clause endpoints]
 
-  RBI[RBI official listing pages] --> DSC[Allowlist and title keywords]
-  DSC --> WRK[Scheduled ingestion worker]
-  WRK --> PAR[Parse and version]
-  PAR --> VER[Deterministic verification]
-  VER --> KB[(PostgreSQL and pgvector)]
-  KB --> USR
-  KB --> GRA
-  KB --> RET
-
-  classDef planned fill:#eeeeee,stroke:#888,color:#222;
-  classDef wip fill:#fff3cd,stroke:#b58900,color:#222;
-  classDef done fill:#d4edda,stroke:#2e7d32,color:#222;
-  class AU,FE,USR,GRA,RET,GEM,VAL planned;
-  class API wip;
-  class RBI,DSC,WRK,PAR,VER,KB done;
+  VER --> REF[Reference extraction]
+  REF --> CLS[Explicit verb classification]
+  CLS --> RSV[Alias or title and date resolution]
+  RSV --> QV[Quote span validation]
+  QV --> DIF[Sentence diff and repeal row parsing]
+  QV --> RDB[Idempotent relationship persistence]
+  RDB --> DB
+  WLIST[Official withdrawn-circular table] --> WPARSE[Parse reference, title, date, and DOM evidence]
+  WPARSE --> WRES[Resolve exact corpus aliases]
+  WRES --> RDB
+  DB --> RAPI[FastAPI relationship evidence endpoint]
+  VER --> AF[Deterministic addressee extraction]
+  AF --> ADB[Applicability facts]
+  ADB --> DB
+  DB --> LC[Lifecycle computation from verified edges]
+  Q[Question and selected document IDs] --> SR[Scoped FTS retrieval]
+  RDB --> SR
+  SR --> RRF[Rank clauses with reciprocal-rank fusion seam]
+  RRF --> GEM[Gemini Interactions API with store=false]
+  GEM --> CV[Validate Pydantic claims and exact source quotes]
+  CV --> ANS[Cited claims or insufficient evidence]
+  ANS --> API
 ```
 
-The gold ingestion, allowlisted keyword discovery, periodic worker, immutable versioning, parsing and database path are implemented. Authentication, relevance, retrieval, Gemini and the product frontend remain planned.
+The ingestion, relationship, applicability, and lifecycle paths run end to end. Old-versus-new diff persistence remains empty until both texts come from reproducible official RBI artifacts.
 
-## 2. Component status
+---
 
-| Component | Phase | Status | Notes or acceptance |
-|-----------|-------|--------|---------------------|
-| Docker Compose foundation | 0 | In progress | Database and API validated; frontend not created yet |
-| Auth0 authentication contract | 0 | Planned | Issuer, audience, JWKS and PKCE configuration documented |
-| Gold corpus and labelled pairs | 0 | In progress | Six official URLs and hashes locked; labelled pairs pending |
-| Scheduler and source discovery | 1 | Done | Four official listings, capped title-keyword matches, audited runs and live idempotency check |
-| Immutable document versioning | 1 | Done | Normalized hashes; immediate six-source rerun created zero versions |
-| HTML and PDF clause parsing | 1 | Done | All configured gold clauses found; HTML live and PDF unit tests pass |
-| Document and clause read API | 1 | Done | Health, document list and latest clause-tree endpoints smoke-tested |
-| Reference extraction | 2 | Planned | Identifier and amendment patterns tested |
-| Relationship resolution and verification | 2 | Planned | RBI/2025-26/44 AMENDS paragraph 8.1 with verified evidence |
-| Lifecycle engine | 3 | Planned | State and derived historical labels tested |
-| Applicability engine and ontology | 3 | Planned | Exclusion and subsumption tests pass |
-| Embedding reconciliation | 4 | Planned | BGE-M3 vectors stored separately from clauses |
-| Staged retrieval | 4 | Planned | Eligible documents, graph, section and clause stages enforced |
-| Gemini adapter | 4 | Planned | Stateless structured output and local Pydantic validation |
-| Claim and quote validation | 4 | Planned | Unsupported or fabricated claims are rejected |
-| Authenticated profile isolation | 5 | Planned | Cross-user access attempts are rejected |
-| Frontend and Relationship Explorer | 5 | Planned | Evidence panel and old-versus-new diff work |
-| Evaluation and demo | 6 | Planned | `EVAL.md` reports real counts and failures |
+## 2. Phase 0 additions — foundation and source lock
 
-## 3. Docker Compose runtime
+### Implemented
 
-```mermaid
-flowchart TB
-  B[Browser] --> F[Frontend container]
-  F --> A[API container]
-  A --> D[(PostgreSQL with pgvector)]
-  A --> X[Auth0 JWKS and token verification]
-  A --> M[Gemini Interactions API]
-  W[Worker container] --> D
-  W --> R[RBI official sources]
-  W --> C[Raw response cache]
-```
+- Docker Compose database, API, and worker services.
+- PostgreSQL 16 with pgvector.
+- Six source-locked official RBI gold documents in `data/gold/corpus.yaml`.
+- Environment contracts for RBI polling, Auth0, Gemini, and embeddings.
+- Initial database schema and repository layout.
 
-Auth0 and Gemini are external managed services. Gemini uses `GEMINI_API_KEY`, `GEMINI_EXTRACT_MODEL=gemini-3.8-flash`, and `GEMINI_ANSWER_MODEL=gemini-3.8-flash`. Secrets and tenant values come from environment variables. PostgreSQL is not exposed directly to the browser.
+---
 
-## 4. Ingestion and versioning flow
+## 3. Phase 1 additions — discovery, ingestion, versioning, and parsing
 
 ```mermaid
 flowchart TD
-  S[Scheduled trigger] --> L[Fetch official RBI listing]
-  L --> K[Allowlist links and match title keywords]
-  K --> N{Known URL and unchanged hash}
-  N -- yes --> X[Record no change]
-  N -- no --> F[Fetch and cache source]
-  F --> V[Create immutable document version]
-  V --> H{HTML text available}
-  H -- yes --> P1[Parse HTML with DOM locations]
-  H -- no --> P2[Parse PDF with page locations]
-  P2 --> O{Usable text layer}
-  O -- no --> OCR[Run OCR only when required]
-  O -- yes --> C[Build clause tree]
-  OCR --> C
-  P1 --> C
-  C --> R[Extract references and amendment verbs]
-  R --> E{Target resolved and explicit verb found}
-  E -- yes --> VR[Create VERIFIED edge with evidence]
-  E -- unresolved target --> UR[Store UNRESOLVED reference]
-  E -- no explicit verb --> CA[Store CANDIDATE]
-  VR --> LC[Recompute lifecycle]
-  C --> DB[(PostgreSQL)]
-  VR --> DB
-  UR --> DB
-  CA --> DB
-  LC --> DB
+  T[Scheduled or manual source run] --> L[Fetch official RBI listing]
+  L --> K[Match configured title keywords]
+  K --> A[Allow only known RBI detail endpoints]
+  A --> C[Cap matches per source]
+  C --> F[Fetch with one second minimum spacing]
+  F --> R[Cache raw response]
+  R --> P{Source format}
+  P -- HTML --> H[Parse clauses with DOM locations]
+  P -- PDF --> D[Parse clauses with page locations]
+  H --> S[Normalized SHA-256]
+  D --> S
+  S --> N{Hash changed}
+  N -- no --> U[Record unchanged run]
+  N -- yes --> V[Create immutable version and clauses]
+  U --> I[(ingest_runs)]
+  V --> I
 ```
 
-PDF evidence stores a page; HTML evidence stores a DOM locator. Both store normalized offsets, source URL, quote, extractor and extractor version.
+### Implemented and checked
 
-## 5. Authenticated user request flow
+- Fixed gold-corpus ingestion.
+- Live discovery from RBI drafts, notifications, Master Directions, and withdrawn-circular listings.
+- Title keyword configuration, official endpoint allowlist, stable URL keys, and per-source match cap.
+- Drafts and notifications every three hours on weekdays; Master Directions and withdrawn circulars daily.
+- Robots policy checks, descriptive user agent, minimum one-second request spacing, and raw caching.
+- HTML-first parsing with PDF fallback.
+- Normalized offsets plus HTML DOM or PDF page evidence locations.
+- Immutable document versions and idempotent reruns.
+- `GET /health`, `GET /documents`, and `GET /documents/{id}/clauses`.
+- Every run audited in `ingest_runs`.
+
+---
+
+## 4. Phase 2 additions — relationship engine so far
 
 ```mermaid
 flowchart TD
-  U[User] --> AU[Auth0 Universal Login with PKCE]
-  AU --> T[Access token]
-  T --> JV[Verify signature issuer audience and expiry]
-  JV --> IM[Map subject to internal user]
-  IM --> P[Load only owned profile]
-  P --> A1[Eligible documents by applicability and lifecycle]
-  A1 --> A2[Expand verified graph up to two hops]
-  A2 --> A3[Filter sections]
-  A3 --> A4[Hybrid clause retrieval]
-  A4 --> GM[Gemini structured response]
-  GM --> PV[Pydantic validation]
-  PV --> QV{Every quote exists in cited clause}
-  QV -- yes --> OK[Cited answer]
-  QV -- no claims survive --> NO[Insufficient evidence]
+  TXT[Parsed regulatory text] --> ID[Extract RBI and department IDs]
+  TXT --> TITLE[Extract titled and dated references]
+  TXT --> CTX[Extract ibid and dated circular references]
+  ID --> RES[Resolve exact aliases first]
+  TITLE --> FUZ[Resolve title similarity at least 92 plus exact date]
+  CTX --> UNR[Keep unresolved until context is proven]
+  RES --> VERB[Classify explicit legal verb]
+  FUZ --> VERB
+  VERB --> SPAN[Validate quote in source text]
+  SPAN --> DIFF[Prepare normalized sentence diff]
+  TXT --> REP[Parse repeal annex rows]
 ```
 
-The browser never supplies the effective user ID. Gemini receives only retrieved corpus clauses, uses `store=false`, and has no Search grounding or URL Context.
+### Implemented and unit-tested
 
-## 6. Relationship proof and lifecycle flow
+- RBI and departmental reference extraction with source spans.
+- Titled Master Direction, publication-date, target-clause, `ibid`, and dated-circular extraction.
+- Table-driven classification for amended, substituted, inserted, deleted, omitted, replaced, repealed, withdrawn, superseded, and consolidated relationships.
+- Negative rules preventing phrases such as “as amended from time to time” from creating edges.
+- Resolution order: exact alias, then title similarity of at least 92 with an exact publication date, otherwise unresolved.
+- Unicode and whitespace-normalized quote-span validation.
+- Sentence-level old/new diff preparation.
+- Deterministic repeal-annex row parsing.
+- Adjacent evidence paragraphs are combined when a reference and its legal instruction span separate HTML or PDF blocks.
+- Additive `document_relations` and `clause_versions` schema with an explicit rollback script.
+- Pull-based `python -m app.relations.run` reconciliation with audited runs and idempotent upserts.
+- Missing raw files are reported and skipped without blocking valid source documents.
+- Unchanged ingestion backfills missing raw-cache metadata without creating another document version.
+- `GET /documents/{id}/relations` returns incoming and outgoing evidence, verification status, source location, and available diff fields.
+- Live verification persisted 251 unique rows across the current local corpus: one explicit `VERIFIED AMENDS` edge and 250 `CANDIDATE RELATED_TO` references. A second run kept the row count at 251.
+
+### Current Phase 2 boundary
+
+The official RBI historical artifact containing the earlier paragraph 8.1 is still unavailable locally. Therefore `old_text`, `new_text`, and the persisted diff for RBI/2025-26/44 remain incomplete, and Phase 2 acceptance has not passed.
+
+---
+
+## 5. Phase 3 additions — lifecycle and applicability so far
+
+```mermaid
+flowchart TD
+  DOC[Parsed official document] --> ADDR[Recognized addressee or applicability clause]
+  ADDR --> FACT[Includes or excludes fact with evidence location]
+  FACT --> ONT[Entity ontology subsumption]
+  PROFILE[Entity code and conditions] --> ONT
+  ONT --> EX{Matching exclusion}
+  EX -- yes --> NO[NOT ESTABLISHED]
+  EX -- no --> COND{Conditions established}
+  COND -- yes --> DIRECT[DIRECT]
+  COND -- no --> POTENTIAL[POTENTIAL]
+
+  REL[Verified relationships] --> LIFE[Lifecycle precedence]
+  LIFE --> STATE[Draft in force repealed or superseded]
+```
+
+### Implemented and checked
+
+- Entity ontology for banks, co-operative banks, NBFCs, NBFC-ICC, NBFC-MFI, HFC, and bank subtypes.
+- Subsumption matching, such as `NBFC_MFI` satisfying an `NBFC` inclusion.
+- Exclusions override inclusions; unmet or absent conditions never produce `DIRECT`.
+- Sixteen table-driven profile×fact cases plus lifecycle precedence tests.
+- Deterministic addressee extraction with HTML DOM or PDF page evidence locations.
+- Additive `entity_ontology` and `applicability_facts` schema with explicit rollback.
+- Audited `python -m app.applicability.run` reconciliation with idempotent upserts.
+- Live run stored 12 official facts; the second run kept the row count at 12.
+- RBI/2025-26/44 stored `NBFC_MFI INCLUDES` with the official addressee and DOM locator.
+- Audited `python -m app.lifecycle.run` computes state only from dates and verified relationships.
+- Official withdrawn-circular table parsing stores exact reference, title, date, DOM location, offsets, and source URL.
+- Exact corpus aliases from the table create idempotent `VERIFIED REPEALS` edges; unknown rows remain outside the narrow corpus.
+- Live lifecycle reconciliation marks 4 documents `REPEALED` and 7 `IN_FORCE`.
+- RBI/2025-26/44 is `REPEALED` from official withdrawal evidence.
+
+### Phase 3 acceptance
+
+An NBFC-MFI matches RBI/2025-26/44 as `DIRECT`, while NBFC-ICC is `NOT_ESTABLISHED`. The document is `HISTORICAL — repealed` because the official withdrawal table proves repeal. It is not labelled consolidated because no official evidence names a consolidation target.
+
+---
+
+## 6. Phase 4 additions — scoped retrieval and grounded answers so far
+
+### Implemented
+
+- `POST /questions` accepts a question and explicit document IDs.
+- Retrieval expands scope up to one hop using verified relationships only, then searches current-version clauses with PostgreSQL full-text search.
+- Reciprocal-rank fusion combines lexical and semantic rankings when semantic retrieval is available; embeddings remain unimplemented.
+- Gemini Interactions adapter sends structured Pydantic JSON Schema with `store=false`.
+- Claim validation requires a retrieved clause ID and a quote found in that clause; responses include page or DOM location and official source URL.
+- Unsupported results return `Insufficient evidence in the selected documents`.
+- Fallback diagnostics distinguish empty retrieval, empty model output, empty model claims, and rejected citations without logging prompts or quotes.
+- Gemini's configured 30-second timeout is converted to the SDK's required milliseconds.
+
+### Current Phase 4 boundary
+
+Live retrieval returned paragraph 8.1 from RBI/2025-26/44 and the related 2022 direction. After changing query matching and converting the configured timeout to SDK milliseconds, the live API returned the 60 percent requirement with a matching quote and HTML DOM locator. Core lexical retrieval and grounded-answer acceptance pass. Semantic retrieval and remaining Phase 4 edge cases remain. See D-050 through D-052.
+
+---
+
+## 7. Current Docker Compose runtime
 
 ```mermaid
 flowchart LR
-  SRC[Explicit source instruction] --> EXT[Extract reference verb and quote]
-  EXT --> ALI[Resolve document alias]
-  ALI --> TGT[Target document version and clause]
-  SRC --> NEW[New clause text]
-  TGT --> OLD[Historical target text]
-  OLD --> DIF[Normalized sentence diff]
-  NEW --> DIF
-  DIF --> REC[Verified relation with evidence]
-  REC --> EVT[Lifecycle event]
-  EVT --> STA[DRAFT IN_FORCE REPEALED or SUPERSEDED]
-  REC --> LAB[Derived amended or consolidated label]
+  W[Worker container] --> RBI[RBI official sources]
+  W --> RAW[Shared raw cache]
+  W --> DB[(PostgreSQL and pgvector)]
+  API[API container] --> DB
+  DEV[Developer or API client] --> API
 ```
 
-Amendment and consolidation remain relationships. They are not stored as mutually exclusive lifecycle states.
+Running services today are `db`, `api`, and `worker`. Applicability and lifecycle run as pull-based worker commands. There is no implemented frontend, Auth0 verification, Gemini adapter, or retrieval engine yet, so those components are intentionally absent.
 
-## 7. Pull-based reconciliation
+---
 
-```mermaid
-flowchart LR
-  KB[(New or changed clauses)] --> AP[Applicability reconcile job]
-  KB --> EM[Embedding reconcile job]
-  AP --> AF[Missing applicability facts]
-  EM --> CE[Missing BGE-M3 embeddings]
-  AF --> KB
-  CE --> KB
-```
+## 8. Build change log
 
-Reconciliation jobs find missing outputs and are safe to rerun. Ingestion does not call applicability, embedding or retrieval modules directly.
-
-## 8. Change log
-
-| Date | Change | Related decision |
-|------|--------|------------------|
-| 2026-11-01 | Initial architecture designed; no code written | D-001 to D-018 |
-| 2026-11-01 | Separate embeddings and pull-based reconciliation introduced | D-019 to D-021 |
-| 2026-11-01 | Evidence-first authenticated MVP, Auth0 and Docker Compose selected | D-022 to D-024 |
-| 2026-11-01 | Gold-first scheduled polling and Gemini structured-output adapter selected | D-025 to D-028 |
-| 2026-11-01 | Authenticated ownership, immutable versions and source-specific evidence locations added | D-029 to D-031 |
-| 2026-11-01 | Lifecycle representation, embedding storage and single-workstream flow corrected | D-032 to D-034 |
-| 2026-11-01 | Official RBI sources made mandatory for stored evidence | D-035 |
-| 2026-11-01 | Phase 1 ingestion core implemented with normalized hashing and source ordinals | D-036, D-037 |
-| 2026-11-01 | Non-conflicting database port and mandatory source identity validation added | D-038, D-039 |
-| 2026-11-01 | Allowlisted keyword discovery and capped live polling implemented | D-040 |
-| 2026-11-01 | APScheduler worker cadence implemented and Compose runtime verified | D-041 |
+| Date | Phase | Addition | Decision |
+|------|-------|----------|----------|
+| 2026-11-01 | Planning | Evidence-first architecture, Auth0 contract, Compose runtime, Gemini provider | D-022 to D-035 |
+| 2026-11-01 | Phase 1 | Normalized version hashes and source ordinals | D-036, D-037 |
+| 2026-11-01 | Phase 1 | Host database port and source identity validation | D-038, D-039 |
+| 2026-11-01 | Phase 1 | Allowlisted keyword discovery and capped polling | D-040 |
+| 2026-11-01 | Phase 1 | APScheduler cadence and worker bootstrap | D-041 |
+| 2026-11-01 | Phase 2 | Official historical artifact required for old/new evidence | D-042 |
+| 2026-11-01 | Documentation | `flow.md` changed to current-only, phase-by-phase implementation history | D-043 |
+| 2026-11-01 | Phase 2 | Idempotent relationship reconciliation, persistence, and evidence API | D-044 |
+| 2026-11-01 | Phase 2 | Unchanged ingestion repairs missing raw-cache metadata | D-045 |
+| 2026-11-01 | Phase 2 | Historical diff deferred without treating alternate test as official proof | D-046 |
+| 2026-11-01 | Phase 3 | Ontology matching, exclusions, conditions, and applicability persistence | D-047 |
+| 2026-11-01 | Phase 3 | Lifecycle changes require verified relationship evidence | D-048 |
+| 2026-11-01 | Phase 3 | Official withdrawal rows create verified repeal edges without inferring consolidation | D-049 |
+| 2026-11-01 | Phase 4 | Scoped retrieval, Gemini structured claims, quote validation, and fallback diagnostics | D-050 |
+| 2026-11-01 | Phase 4 | Convert configured Gemini timeout seconds to SDK milliseconds | D-051 |
+| 2026-11-01 | Phase 4 | Live grounded answer returns a verified clause quote and source location | D-052 |
