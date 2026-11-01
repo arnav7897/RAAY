@@ -142,14 +142,14 @@ export default function App() {
 
   useEffect(() => {
     function openCommandPalette(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      if (isAuthenticated && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setCommandOpen(true)
       }
     }
     window.addEventListener('keydown', openCommandPalette)
     return () => window.removeEventListener('keydown', openCommandPalette)
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
     if (!selectedId || !isAuthenticated) return
