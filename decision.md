@@ -4,7 +4,7 @@ Records accepted design decisions and why they were made. Append new entries; do
 
 Status values: `Accepted` · `Provisional` (needs a test or answer) · `Superseded`.
 
-**Current project status:** Phase 5 in progress; native email/password auth, per-user profiles, and React screens are implemented. Live account-flow and user-isolation acceptance remain. Phase 4 latency diagnosis and recall evaluation remain open; the Phase 2 official historical diff is deferred.
+**Current project status:** Phase 5 in progress; native email/password auth, per-user profiles, and separated React pages are implemented. The curated RBI corpus has nine documents. Live account-flow and user-isolation acceptance remain; the Phase 2 official historical diff is deferred.
 
 ---
 
@@ -406,6 +406,62 @@ Status values: `Accepted` · `Provisional` (needs a test or answer) · `Supersed
 - **Why:** The user asked for a grounded, personable organic-minimal design and an interactive UI that explains the product to new users.
 - **Rejected:** A high-density dashboard, generic monochrome UI, and a static interface with no onboarding.
 - **Open:** Review the signed-in screens and tour during manual browser acceptance; use feedback to tune copy or layout.
+
+### D-061 — Map Gemini SDK timeouts and allow slow responses
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Treat the SDK's wrapped `APITimeoutError` as an application timeout so the API returns HTTP 504 instead of an unhandled HTTP 500. Set `GEMINI_TIMEOUT_SECONDS=120`, the configured maximum, and log timeout duration without question or evidence content. This supersedes D-058's 60-second runtime setting.
+- **Why:** A live request completed retrieval in 3.35 seconds, then Gemini timed out at 60 seconds. The installed SDK wrapped the HTTP read timeout in `APITimeoutError`, which did not match the prior timeout or exported API-error classes.
+- **Rejected:** Returning an unhandled 500, removing the timeout, or hiding slow provider responses from logs.
+- **Open:** Rebuild the API and check the next signed-in question. If Gemini again reaches 120 seconds, investigate provider latency and prompt size instead of increasing the limit.
+
+### D-062 — Expand the curated NBFC evidence corpus
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Expand the locked gold corpus from six to nine documents with RBI NBFC IT Governance Directions (2023), NBFC Fraud Risk Management Directions (2024), and Internal Ombudsman Directions for Regulated Entities (2023). Use official RBI source URLs only.
+- **Why:** The six-document sample supported a narrow MFI/KYC demo but gave first-time users too little regulatory coverage. The additions cover technology controls, fraud governance, and customer complaint handling for relevant NBFCs.
+- **Rejected:** Broad, unreviewed crawling that would mix unrelated entities, stale circulars, and unsupported documents into the evidence store.
+- **Open:** Ingest the three entries, validate parsing and applicability, and add further topic-specific documents only after official source and current-status review.
+
+### D-063 — Separate product pages and explain repeal
+- **Date:** 2026-11-01 · **Status:** Accepted by user
+- **Decision:** Keep the overview focused; place search and lifecycle filters on a dedicated Regulations page, and include that page in the first-use tour. Explain repeal beside a repealed document: the old instrument is withdrawn, so users must avoid relying on it and check verified replacement links.
+- **Why:** The prior overview stacked onboarding, profile relevance, and the full corpus table in one long page. Repeal status matters to compliance work because it helps identify obsolete rules while preserving history; a repeal by itself does not establish a replacement.
+- **Rejected:** Keeping every workflow and every document list on the overview, or treating “repealed” as synonymous with “replaced” or “consolidated.”
+- **Open:** Review the page flow in a browser and confirm the explanation is clear to an NBFC-MFI user.
+
+### D-064 — Keep downloaded model weights out of Git
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Ignore `data/huggingface/` in Git. Store downloaded BGE-M3 files in the local bind-mounted cache.
+- **Why:** The current cache uses 4.3 GB. It is reproducible downloaded data, not source code, and should not enter commits or GitHub pushes.
+- **Rejected:** Committing model weights or relying on manual staging discipline.
+- **Open:** None.
+
+### D-065 — Use local Ollama for grounded answers
+- **Date:** 2026-11-01 · **Status:** Accepted by user; supersedes the runtime answer-provider choice in D-026 and D-027
+- **Decision:** Run answer generation locally through Ollama using `qwen2.5:3b`. Keep the provider-neutral `LLM` interface, Pydantic structured-output validation, deterministic retrieval, and exact quote verification. Do not send user questions or regulatory evidence to Gemini.
+- **Why:** Repeated Gemini Interactions timeouts also affected one-line prompts; the local Qwen2.5 3B model is already installed. Ollama's JSON Schema response format fits the existing answer contract.
+- **Rejected:** Rotating Gemini API keys or increasing remote timeouts; neither addresses the observed response stalls. Replacing BGE-M3 or citation validation is outside this change.
+- **Open:** Verify a local answer against a known question and confirm its quote passes the existing verifier. Reassess the 3B model's answer quality before broader use.
+
+### D-066 — Connect the Compose API to host Ollama over Docker bridge
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Map `host.docker.internal` to Docker's `host-gateway` for the API container. On this Linux host, configure Ollama to bind to `172.17.0.1:11434`, the default Docker bridge gateway, rather than all interfaces.
+- **Why:** Ollama runs on the host and currently listens on `127.0.0.1:11434`, which containers cannot reach. Binding only to the Docker bridge avoids exposing the inference port on LAN interfaces.
+- **Rejected:** Binding Ollama to `0.0.0.0` or publishing port `11434` from Compose.
+- **Open:** Apply the systemd override, restart Ollama, and verify connectivity from the API container.
+
+### D-067 — Keep host Ollama on loopback with Docker Desktop routing
+- **Date:** 2026-11-01 · **Status:** Accepted; supersedes D-066's host bind-address requirement for this Docker Desktop setup
+- **Decision:** Keep Ollama listening on `127.0.0.1:11434`. Use `http://host.docker.internal:11434` from the API container. Do not bind Ollama to `172.17.0.1` or `0.0.0.0` on this host.
+- **Why:** Docker reports host routing through `192.168.65.2`; `172.17.0.1` is not assigned in the host network namespace and Ollama failed with `bind: cannot assign requested address`. The running API container successfully fetched `/api/tags` over `host.docker.internal` and found `qwen2.5:3b` while Ollama listened on loopback.
+- **Rejected:** Binding to an unassigned Docker bridge address or exposing the unauthenticated Ollama port on all host interfaces.
+- **Open:** Rebuild the API image and verify a grounded answer passes RAAY's quote validator.
+
+### D-068 — Keep workspace overview actionable and evidence-scoped
+- **Date:** 2026-11-01 · **Status:** Accepted for the Phase 5 UI
+- **Decision:** Add keyboard-accessible quick navigation across the five workspace areas and the product tour. Show overview document counts by stored lifecycle state, label the figures as curated-corpus counts, and link directly to the regulations library.
+- **Why:** First-time users need a fast route to each task and a plain-language view of what the indexed corpus contains. Clear scope prevents the small corpus from appearing comprehensive.
+- **Rejected:** Hiding navigation behind icons alone, presenting status totals as full RBI coverage, or adding inferred counts without database-backed documents.
+- **Open:** Review keyboard and narrow-screen behavior during browser acceptance.
 
 ---
 

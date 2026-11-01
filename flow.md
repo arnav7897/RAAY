@@ -3,7 +3,7 @@
 This document shows only behavior implemented in code so far. The complete target architecture remains in [`README.md`](README.md) and [`plan.md`](plan.md). New implemented behavior is added phase by phase so the build history stays easy to follow.
 
 **Last updated:** 2026-11-01  
-**Current phase:** Phase 5 in progress — native email/password auth, profiles, and React UI added; live account-flow acceptance pending
+**Current phase:** Phase 5 in progress — native auth, profiles, separated pages, quick navigation, and evidence-scoped overview counts added; live account-flow acceptance pending
 
 Status legend: `Done` means implemented and checked · `In progress` means code exists but the phase acceptance path is incomplete
 
@@ -44,8 +44,8 @@ flowchart LR
   Q[Question and selected document IDs] --> SR[Scoped FTS retrieval]
   RDB --> SR
   SR --> RRF[Rank clauses with reciprocal-rank fusion seam]
-  RRF --> GEM[Gemini Interactions API with store=false]
-  GEM --> CV[Validate Pydantic claims and exact source quotes]
+  RRF --> OLLAMA[Local Ollama qwen2.5:3b with JSON Schema]
+  OLLAMA --> CV[Validate Pydantic claims and exact source quotes]
   CV --> ANS[Cited claims or insufficient evidence]
   ANS --> API
 ```
@@ -60,8 +60,8 @@ The ingestion, relationship, applicability, and lifecycle paths run end to end. 
 
 - Docker Compose database, API, and worker services.
 - PostgreSQL 16 with pgvector.
-- Six source-locked official RBI gold documents in `data/gold/corpus.yaml`.
-- Environment contracts for RBI polling, native sessions, Gemini, and embeddings.
+- Nine source-locked official RBI gold documents in `data/gold/corpus.yaml`.
+- Environment contracts for RBI polling, native sessions, Ollama, and embeddings.
 - Initial database schema and repository layout.
 
 ---
@@ -100,6 +100,9 @@ flowchart TD
 - Immutable document versions and idempotent reruns.
 - `GET /health`, `GET /documents`, and `GET /documents/{id}/clauses`.
 - Every run audited in `ingest_runs`.
+- Gold manifest expanded from six to nine: added RBI NBFC IT Governance (2023), NBFC Fraud Risk Management (2024), and Internal Ombudsman (2023) Directions.
+- Local database now has all nine documents and 1,057 clauses. The three additions contributed 334 clauses.
+- Relationship reconciliation ran across nine sources (268 rows); applicability reconciliation stored 12 facts; lifecycle now marks 5 documents repealed and 4 in force.
 
 ---
 
@@ -192,24 +195,24 @@ An NBFC-MFI matches RBI/2025-26/44 as `DIRECT`, while NBFC-ICC is `NOT_ESTABLISH
 - `POST /questions` accepts a question and explicit document IDs.
 - Retrieval expands scope up to one hop using verified relationships only, then searches current-version clauses with PostgreSQL full-text search.
 - Reciprocal-rank fusion combines lexical and semantic rankings when current scoped vectors exist.
-- Gemini Interactions adapter sends structured Pydantic JSON Schema with `store=false`.
+- Local Ollama adapter sends the Pydantic JSON Schema to `/api/chat` and validates returned JSON locally.
 - Claim validation requires a retrieved clause ID and a quote found in that clause; responses include page or DOM location and official source URL.
 - Unsupported results return `Insufficient evidence in the selected documents`.
 - Fallback diagnostics distinguish empty retrieval, empty model output, empty model claims, and rejected citations without logging prompts or quotes.
-- Gemini uses one reused async client per API process, stateless structured requests, and low thinking by default.
-- `GEMINI_TIMEOUT_SECONDS` is passed to the SDK in seconds; the prior milliseconds conversion was incorrect.
+- Ollama uses one reused async HTTP client per API process and keeps the model loaded for ten minutes after a request.
+- Docker API reaches host Ollama through `host.docker.internal`; the host service binds only to Docker's default bridge address.
 - Local `BAAI/bge-m3` encodes current clauses and questions into normalized 1024-dimensional vectors.
 - Additive `clause_embeddings` table keeps each model's vectors separate from clauses.
 - Explicit `python -m app.embeddings.run` job embeds unindexed clauses and is safe to rerun.
 - Query-time dense cosine ranking joins lexical ranking through reciprocal-rank fusion when current scoped vectors exist.
-- Structured timing logs report retrieval, model, Gemini, validation, and total durations without logging questions or quotes.
+- Structured timing logs report retrieval, model, LLM, validation, and total durations without logging questions or quotes.
 - API startup preloads BGE-M3 so the first user question avoids the 20–25 second cold model load.
 - CPU inference is capped at configurable `EMBEDDING_CPU_THREADS` (default `4`); warm query encoding measured 2.86 seconds versus the 5.09-second baseline.
 - The Docker image installs CPU-only PyTorch, avoiding over 2 GB of unnecessary CUDA packages.
 
 ### Current Phase 4 boundary
 
-Live retrieval and grounded-answer acceptance pass for paragraph 8.1: answer quote matches source and response includes the RBI DOM locator. Baseline timing measured 29.6 seconds retrieval and 38.8 seconds Gemini; API startup now loads the encoder in 25.7 seconds, and warm query encoding measures 2.86 seconds. Recheck the full authenticated question request after this rebuild. Recall@5 evaluation and remaining edge cases remain. See D-050 through D-055 and D-058 through D-059.
+Gemini answering is superseded by local Ollama after repeated API timeouts. The Qwen2.5 3B model is installed on the host. The rebuilt API container reaches `host.docker.internal:11434/api/tags` with HTTP 200 while Ollama listens on loopback. A grounded answer through RAAY remains to be checked. Retrieval and citation validation remain unchanged. Recall@5 evaluation remains. See D-050 through D-055, D-058 through D-059, and D-065 through D-067.
 
 ---
 
@@ -224,17 +227,24 @@ Live retrieval and grounded-answer acceptance pass for paragraph 8.1: answer quo
 - The API derives the internal user from a valid session and scopes profile reads/writes by that user ID.
 - `stakeholder_profiles` stores entity type and explicit attributes; browser requests cannot set the effective user ID.
 - `GET /relevant` evaluates stored applicability evidence against the authenticated user's profile and returns source quotes and locators.
-- Four UI areas: document dashboard, profile form, verified relationship explorer with available old/new text, and cited question answering.
+- Five focused UI pages: overview, regulations library, profile, verified relationship explorer with available old/new text, and cited question answering.
+- `Ctrl+K` or `⌘K` opens a searchable quick-navigation dialog for all workspace pages and the product tour; keyboard focus stays in the dialog and returns to its trigger when closed.
+- Overview status tiles count indexed, in-force, repealed, and draft documents from stored lifecycle values; the page labels the corpus curated and links to the full library.
 - Warm cream, soft beige, charcoal, and forest-green visual system with responsive navigation and large readable controls.
-- First-use four-step product tour can be dismissed and replayed from the top bar; progress is remembered per account in the browser.
-- Dashboard guides users through profile setup, evidence exploration, and questions. Document search, question examples, and password visibility control are interactive.
+- First-use five-step product tour can be dismissed and replayed from the top bar; it now introduces the Regulations page and remembers progress per account in the browser.
+- Overview now shows profile relevance and a small set of next steps; the searchable, lifecycle-filtered document table lives on its own regulations page.
+- Repealed documents explain the business purpose: stop relying on obsolete text, then inspect verified replacement or consolidation links. Repeal alone does not prove a replacement.
+- Question examples and password visibility control are interactive.
 - Question requests show elapsed time and explain retrieval, drafting, and citation checks. Answers display source quotes and clickable source locations.
+- Ollama timeout failures are logged without prompt content and return HTTP 504; the configured request bound is 120 seconds.
 - Document, relationship, and question endpoints now require a valid native session cookie.
 - Docker Compose includes a Vite frontend service on port 5173. Migration `006_native_email_auth.sql` adds credentials and session storage to existing databases.
 
 ### Current Phase 5 boundary
 
 Set `SESSION_COOKIE_SECURE=true` when serving over HTTPS. For an existing DB, apply migration 006. Live registration, login/logout, session expiry, rate limits, cross-user isolation, and browser-to-API acceptance remain unverified. Email verification and password reset are not implemented, so keep this prototype private. Historical old/new text appears only where verified data exists; the known official 75%-to-60% example remains deferred.
+
+The regulations page, corpus expansion, quick navigation, and overview status snapshot are implemented. The current local database has 915 BGE-M3 vectors for 1,057 clauses: 142 recently added clauses remain lexical-search only. The CPU embedding run was stopped after Docker reported over 60 CPU minutes; it saved 192 new vectors before stopping. Run `python -m app.embeddings.run` in the worker when ready; it is incremental. Browser review remains pending.
 
 ---
 
@@ -282,3 +292,11 @@ Compose services are `db`, `api`, `worker`, and `frontend`. Applicability and li
 | 2026-11-01 | Phase 4 | Preload/reuse inference clients, cap CPU threads, reduce Gemini thinking, and correct timeout units | D-058 |
 | 2026-11-01 | Runtime | Install CPU-only Torch in Docker instead of CUDA-enabled PyPI build | D-059 |
 | 2026-11-01 | Phase 5 | Organic-minimal design system, guided tour, workflow cues, searchable corpus, and answer progress | D-060 |
+| 2026-11-01 | Phase 4 | Map Gemini SDK timeouts correctly and bound slow requests at 120 seconds | D-061 |
+| 2026-11-01 | Phase 1 | Expand curated NBFC corpus from six to nine official RBI documents | D-062 |
+| 2026-11-01 | Phase 5 | Split regulations into its own page; explain repeal in business context | D-063 |
+| 2026-11-01 | Runtime | Ignore the 4.3 GB local Hugging Face model cache in Git | D-064 |
+| 2026-11-01 | Phase 4 | Replace hosted Gemini answers with local Ollama Qwen2.5 3B; retain schema, quote, and citation validation | D-065 |
+| 2026-11-01 | Runtime | Route API container to host Ollama through Docker host-gateway, bound to bridge interface | D-066 |
+| 2026-11-01 | Runtime | Keep Ollama on loopback; Docker Desktop host route already reaches it | D-067 |
+| 2026-11-01 | Phase 5 | Add keyboard quick navigation and curated-corpus lifecycle counts to overview | D-068 |
