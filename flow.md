@@ -2,7 +2,7 @@
 
 Living document. It shows what is designed and what has actually been built. Update it at the end of every phase and whenever the architecture changes.
 
-**Last updated:** 2026-11-01 · **Current phase:** Phase 1 in progress; ingestion core accepted, scheduled discovery pending
+**Last updated:** 2026-11-01 · **Current phase:** Phase 1 in progress; keyword discovery and scheduled polling accepted
 
 Status legend: `Planned` means designed only · `In progress` means implementation has started · `Done` means the acceptance check passed · `Changed` means the implementation differs from the plan and has a decision entry
 
@@ -21,7 +21,8 @@ flowchart LR
   GEM --> VAL[Claim and quote validator]
   VAL --> FE
 
-  RBI[RBI official sources] --> WRK[Scheduled ingestion worker]
+  RBI[RBI official listing pages] --> DSC[Allowlist and title keywords]
+  DSC --> WRK[Scheduled ingestion worker]
   WRK --> PAR[Parse and version]
   PAR --> VER[Deterministic verification]
   VER --> KB[(PostgreSQL and pgvector)]
@@ -33,11 +34,11 @@ flowchart LR
   classDef wip fill:#fff3cd,stroke:#b58900,color:#222;
   classDef done fill:#d4edda,stroke:#2e7d32,color:#222;
   class AU,FE,USR,GRA,RET,GEM,VAL planned;
-  class API,WRK wip;
-  class RBI,PAR,VER,KB done;
+  class API wip;
+  class RBI,DSC,WRK,PAR,VER,KB done;
 ```
 
-The gold ingestion, immutable versioning, parsing and database path are implemented. Authentication, relevance, retrieval, Gemini and the product frontend remain planned.
+The gold ingestion, allowlisted keyword discovery, periodic worker, immutable versioning, parsing and database path are implemented. Authentication, relevance, retrieval, Gemini and the product frontend remain planned.
 
 ## 2. Component status
 
@@ -46,7 +47,7 @@ The gold ingestion, immutable versioning, parsing and database path are implemen
 | Docker Compose foundation | 0 | In progress | Database and API validated; frontend not created yet |
 | Auth0 authentication contract | 0 | Planned | Issuer, audience, JWKS and PKCE configuration documented |
 | Gold corpus and labelled pairs | 0 | In progress | Six official URLs and hashes locked; labelled pairs pending |
-| Scheduler and source discovery | 1 | Planned | Idempotent polling and recorded ingest runs |
+| Scheduler and source discovery | 1 | Done | Four official listings, capped title-keyword matches, audited runs and live idempotency check |
 | Immutable document versioning | 1 | Done | Normalized hashes; immediate six-source rerun created zero versions |
 | HTML and PDF clause parsing | 1 | Done | All configured gold clauses found; HTML live and PDF unit tests pass |
 | Document and clause read API | 1 | Done | Health, document list and latest clause-tree endpoints smoke-tested |
@@ -83,7 +84,8 @@ Auth0 and Gemini are external managed services. Gemini uses `GEMINI_API_KEY`, `G
 ```mermaid
 flowchart TD
   S[Scheduled trigger] --> L[Fetch official RBI listing]
-  L --> N{Known URL and unchanged hash}
+  L --> K[Allowlist links and match title keywords]
+  K --> N{Known URL and unchanged hash}
   N -- yes --> X[Record no change]
   N -- no --> F[Fetch and cache source]
   F --> V[Create immutable document version]
@@ -178,3 +180,5 @@ Reconciliation jobs find missing outputs and are safe to rerun. Ingestion does n
 | 2026-11-01 | Official RBI sources made mandatory for stored evidence | D-035 |
 | 2026-11-01 | Phase 1 ingestion core implemented with normalized hashing and source ordinals | D-036, D-037 |
 | 2026-11-01 | Non-conflicting database port and mandatory source identity validation added | D-038, D-039 |
+| 2026-11-01 | Allowlisted keyword discovery and capped live polling implemented | D-040 |
+| 2026-11-01 | APScheduler worker cadence implemented and Compose runtime verified | D-041 |

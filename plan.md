@@ -2,7 +2,7 @@
 
 > Goal: prove, with source-text evidence, (A) which RBI documents relate to which, (B) whether a document applies to a stakeholder, (C) which clauses matter. LLMs may *propose*; deterministic code *verifies*.
 
-**Current status:** Phase 1 in progress. The six-source manifest, immutable versioning, HTML/PDF parsing, database schema and read API are implemented; labelled pairs and scheduled listing discovery remain pending.
+**Current status:** Phase 1 in progress. The six-source manifest, immutable versioning, HTML/PDF parsing, database schema, read API, keyword-based live discovery and periodic polling are implemented; Phase 0 labelled pairs remain pending.
 
 ## Product flow: problem and user journey
 

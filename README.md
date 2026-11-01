@@ -2,7 +2,7 @@
 
 An evidence-backed system that shows regulated entities which RBI documents apply to them, how those documents connect to existing rules, and what has changed, with the official sentence attached to every claim.
 
-> **Status:** Phase 1 in progress. The gold-corpus ingestion, immutable document versions, HTML/PDF clause parsing, PostgreSQL schema, and document/clause read API are implemented. Scheduled listing discovery remains pending.
+> **Status:** Phase 1 in progress. Gold ingestion, capped keyword discovery from four official RBI listings, periodic polling, immutable versions, HTML/PDF parsing, PostgreSQL storage, and the read API are implemented.
 
 ---
 
@@ -58,7 +58,7 @@ One shared knowledge base serves all users; per-user data is limited to the prof
 |------|--------|
 | Backend | Python 3.12, FastAPI, pydantic |
 | Database | PostgreSQL 16, `pgvector`, built-in full-text search |
-| Ingestion | httpx, selectolax, PyMuPDF (fallback), Tesseract (optional OCR) |
+| Ingestion | httpx, selectolax, PyMuPDF (fallback), APScheduler 3, Tesseract (optional OCR) |
 | Matching | rapidfuzz, rule engine, entity ontology |
 | Embeddings | BGE-M3 (default, local, 1024-d); alternatives evaluated in `decision.md` |
 | LLM | Gemini 3.8 Flash behind a provider-neutral interface; planned for Phase 4 |
@@ -94,12 +94,16 @@ pip install -e 'backend[dev]'
 # 5. Load the six-document official RBI gold corpus
 python -m app.ingest.run --source gold
 
+# Discover matching documents from one official RBI listing
+python -m app.ingest.run --source drafts
+python -m app.ingest.run --source notifications --keywords 'microfinance,nbfc,know your customer'
+
 # 6. Run the API locally
 uvicorn app.api.main:app --reload
 
 # Or build and run the current containers
 docker compose build api worker
-docker compose up -d api
+docker compose up -d api worker
 
 # 7. Tests and static checks
 cd backend
@@ -108,7 +112,9 @@ cd backend
 ../.venv/bin/mypy app
 ```
 
-The currently implemented source is `gold`. The CLI reserves `drafts`, `notifications`, `masterdirs`, and `withdrawn`, but scheduled listing discovery is not yet implemented and is not claimed as runnable.
+All CLI sources are implemented: `gold`, `drafts`, `notifications`, `masterdirs`, and `withdrawn`. Live sources filter document titles using `RBI_DISCOVERY_KEYWORDS`, accept only known official RBI detail endpoints, and stop after the configured per-source match cap. `--keywords` provides a one-run override.
+
+The worker first idempotently loads the gold corpus, then schedules drafts and notifications every three hours on weekdays and Master Directions and withdrawn circulars daily. Set `RBI_SCHEDULER_RUN_ON_STARTUP=true` only when an immediate poll of all four live listings is wanted; scheduled polling still runs when it is false.
 
 The API currently exposes `GET /health`, `GET /documents`, and `GET /documents/{id}/clauses`. Gold ingestion is idempotent: an unchanged immediate rerun creates zero document versions and records the run in `ingest_runs`.
 
@@ -121,6 +127,10 @@ The API currently exposes `GET /health`, `GET /documents`, and `GET /documents/{
 | `RAW_CACHE_DIR` | Directory for cached official responses |
 | `RBI_USER_AGENT` | Descriptive user agent used for RBI requests |
 | `RBI_REQUEST_INTERVAL_SECONDS` | Minimum request spacing; cannot be below one second |
+| `RBI_DISCOVERY_KEYWORDS` | Comma-separated, case-insensitive document-title keywords for live discovery |
+| `RBI_DISCOVERY_MAX_MATCHES_PER_SOURCE` | Maximum matching detail documents fetched from one listing per run (default `20`) |
+| `RBI_SCHEDULER_TIMEZONE` | Timezone used by periodic polling (default `Asia/Kolkata`) |
+| `RBI_SCHEDULER_RUN_ON_STARTUP` | Whether the worker immediately polls all live listings after gold bootstrap |
 | `EMBEDDING_MODEL` | Embedding model name (default `BAAI/bge-m3`) |
 | `GEMINI_EXTRACT_MODEL`, `GEMINI_ANSWER_MODEL` | Gemini model identifiers for later extraction and answers |
 | `GEMINI_API_KEY` | Gemini API key; not used by Phase 1 ingestion |
@@ -139,7 +149,7 @@ Never commit real keys. All variables will be listed in `.env.example`.
 
 ## Current status
 
-Phase 1 is in progress. Six official RBI documents are source-locked with normalized-content hashes; the ingestion/versioning/parser core and read API pass their current checks. The Phase 0 labelled-pair fixture and Phase 1 scheduled listing discovery are still pending. See [`flow.md`](flow.md) for component status.
+Phase 1 is in progress. Six official RBI documents are source-locked; the ingestion/versioning/parser core, read API, live keyword discovery, audited CLI runs, and scheduled Compose worker pass their checks. A live KYC draft was ingested and its immediate rerun created zero versions. The Phase 0 labelled-pair fixture remains pending. See [`flow.md`](flow.md) for component status.
 
 ## Limitations and disclaimer
 

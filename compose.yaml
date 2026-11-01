@@ -35,7 +35,7 @@ services:
 
   worker:
     build: ./backend
-    command: python -m app.ingest.run --source gold
+    command: python -m app.ingest.worker
     env_file:
       - path: .env
         required: false

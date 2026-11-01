@@ -4,7 +4,7 @@ Records important design decisions and **why** they were made. Append only: neve
 
 Status values: `Accepted` · `Provisional` (needs a test or answer) · `Superseded`.
 
-**Current project status:** Phase 1 in progress; ingestion core accepted, scheduled discovery pending.
+**Current project status:** Phase 1 in progress; ingestion, live keyword discovery and periodic polling are implemented, while Phase 0 labelled pairs remain pending.
 
 ---
 
@@ -251,6 +251,22 @@ Status values: `Accepted` · `Provisional` (needs a test or answer) · `Supersed
 - **Why:** RBI numeric page IDs are adjacent and opaque. Clause checks alone initially accepted the Universal Banks Licensing page for the MFI manifest entry; identifier validation caught and blocked that mismatch.
 - **Rejected:** Trusting a URL because its page ID was inferred or because it contains expected clause numbers.
 - **Open:** Title validation may be added as a second signal, but identifiers are mandatory.
+
+---
+
+### D-040 — Live discovery is title-keyword filtered and endpoint allowlisted
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Poll the four official RBI listing pages, match configurable case-insensitive title keywords, accept only known RBI detail endpoints, assign stable URL-derived source keys, and cap each source at `RBI_DISCOVERY_MAX_MATCHES_PER_SOURCE` matches per run.
+- **Why:** RBI listing pages include decades of archives and navigation links. An endpoint allowlist prevents off-site or non-document ingestion, while a cap keeps the MVP within its small-catalogue scope. A live KYC draft was discovered from the official draft listing and its immediate rerun created zero versions.
+- **Rejected:** Site-wide crawling, unbounded archive ingestion, accepting arbitrary same-page links, and semantic/LLM discovery.
+- **Open:** Topic ontology and full-text matching can supplement title keywords after deterministic evaluation; they must not broaden evidence beyond official RBI sources.
+
+### D-041 — APScheduler owns periodic listing polls
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Use APScheduler 3 in the dedicated Compose worker. Poll drafts and notifications every three hours on weekdays, staggered by 20 minutes; poll Master Directions and withdrawn circulars daily at 01:00 and 02:00 in `RBI_SCHEDULER_TIMEZONE`. Bootstrap the gold corpus before starting the scheduler, with optional immediate live polling controlled by `RBI_SCHEDULER_RUN_ON_STARTUP`.
+- **Why:** A separate asyncio scheduler keeps polling out of API requests, meets the minimum three-hour cadence, prevents overlapping instances, and preserves one audited `ingest_runs` row per source execution. The built worker remained running after a successful gold bootstrap.
+- **Rejected:** FastAPI background tasks, polling faster than three hours, one broad crawl job, and requiring immediate live archive scans on every container restart.
+- **Open:** Production deployment may add persistent scheduler state if more than one worker replica is introduced; the MVP runs exactly one worker.
 
 ---
 
