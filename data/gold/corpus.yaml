@@ -1,0 +1,54 @@
+documents:
+  - key: microfinance-directions-2022
+    title: Master Direction - Regulatory Framework for Microfinance Loans Directions, 2022
+    rbi_ref: RBI/DOR/2021-22/89
+    dept_ref: DoR.FIN.REC.95/03.10.038/2021-22
+    published_at: 2022-03-14
+    source_url: https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12256
+    content_hash: b1e8c724078a316f8ced89959aaf2cf54b36518e6da524e7e7dbea51fc66f266
+    expected_clauses: ["2.1", "8.1"]
+
+  - key: qualifying-assets-review-2025
+    title: Review of Qualifying Assets Criteria
+    rbi_ref: RBI/2025-26/44
+    dept_ref: DoR.FIN.REC.25/03.10.038/2025-26
+    published_at: 2025-06-06
+    source_url: https://www.rbi.org.in/Scripts/BS_NBFCNotificationView.aspx?Id=12856
+    content_hash: 8d53d554a16f0aa99f440afcf0121e849d56d0b26b1b89c52e5e5413ab4ae24a
+    expected_clauses: ["8.1", "2", "3"]
+
+  - key: consolidation-withdrawal-2025
+    title: Consolidation of Regulations - Withdrawal of circulars
+    rbi_ref: RBI/2025-26/100
+    dept_ref: DOR.RRC.REC.302/33-01-010/2025-26
+    published_at: 2025-11-28
+    source_url: https://www.rbi.org.in/Scripts/BS_CircularIndexDisplay.aspx?Id=13170
+    content_hash: f37f2e78e9cd8f42b8c8aa4ab22b76c3baf0e5e0b494cda3083131def8f2491f
+    expected_clauses: ["2", "3", "4"]
+
+  - key: nbfc-mfi-directions-2025
+    title: Reserve Bank of India Non-Banking Financial Companies Microfinance Institution Directions, 2025
+    rbi_ref: RBI/DOR/2025-26/371
+    dept_ref: DOR.FIN.REC.290/03-10-038/2025-26
+    published_at: 2025-11-28
+    source_url: https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=12933
+    content_hash: b9327369bc2270ff830a20e14fefde0cf4238b7391b9a84a1e9bb7a2d77e6cf4
+    expected_clauses: ["1"]
+
+  - key: kyc-directions-2016
+    title: Master Direction - Know Your Customer Direction, 2016
+    rbi_ref: RBI/DBR/2015-16/18
+    dept_ref: DBR.AML.BC.No.81/14.01.001/2015-16
+    published_at: 2016-02-25
+    source_url: https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=11566
+    content_hash: 01edf826c03d4a0531639e4de8d480b94d07ea8f7be55fa8f154086bb9e4440d
+    expected_clauses: ["10", "37", "38", "56"]
+
+  - key: kyc-amendment-2024
+    title: Amendment to the Master Direction - Know Your Customer Direction, 2016
+    rbi_ref: RBI/2024-2025/87
+    dept_ref: DOR.AML.REC.49/14.01.001/2024-25
+    published_at: 2024-11-06
+    source_url: https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12746
+    content_hash: 072594bc2eeb3efb62f362a02ff2c4ef971bf5ddf5e54f48bd0784ddde504c29
+    expected_clauses: ["2"]
