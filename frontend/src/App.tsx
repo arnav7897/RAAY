@@ -250,7 +250,7 @@ export default function App() {
       <header className="topbar"><div className="breadcrumb"><span className="breadcrumb-mark">RAAY</span><span className="breadcrumb-separator">/</span> {nav.find((item) => item.id === screen)?.label}</div><div className="topbar-actions"><button className="command-trigger" type="button" onClick={() => setCommandOpen(true)} aria-keyshortcuts="Control+K Meta+K"><span>Jump to</span><kbd>⌘ K</kbd></button><button className="tour-launch" type="button" onClick={startTour}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 1 1 4.4 1.6c-1.2 1.1-2 1.4-2 3"/><path d="M12 17.5v.1"/></svg><span>Take a tour</span></button><div className="user-chip"><span className="user-avatar">{(user?.email || 'U').slice(0, 1).toUpperCase()}</span><span>{user?.email || 'Account'}</span></div><button className="mobile-signout" type="button" onClick={() => void signOut()} aria-label="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg></button></div></header>
       <div className="content">
         {error && <div className="error-banner" role="alert">{error}<button onClick={() => setError('')}>Dismiss</button></div>}
-        {screen === 'dashboard' && <Dashboard documents={documents} relevant={relevant} hasProfile={hasProfile} busy={busy} onProfile={() => setScreen('profile')} onSelect={(id) => { setSelectedId(id); setScreen('explorer') }} onAsk={() => setScreen('questions')} />}
+        {screen === 'dashboard' && <Dashboard documents={documents} relevant={relevant} hasProfile={hasProfile} busy={busy} onProfile={() => setScreen('profile')} onSelect={(id) => { setSelectedId(id); setScreen('explorer') }} onAsk={() => setScreen('questions')} onBrowse={() => setScreen('library')} />}
         {screen === 'library' && <DocumentLibrary documents={documents} busy={busy} onSelect={(id) => { setSelectedId(id); setScreen('explorer') }} />}
         {screen === 'profile' && <ProfileScreen profile={profile} setProfile={setProfile} onSave={saveProfile} busy={busy} />}
         {screen === 'explorer' && <Explorer documents={documents} selectedId={selectedId} setSelectedId={setSelectedId} selected={selected} relations={relationships} loading={relationshipsLoading} />}
@@ -332,10 +332,23 @@ function Login({ onAuthenticated }: { onAuthenticated: (account: Account) => voi
   </main>
 }
 
-function Dashboard({ documents, relevant, hasProfile, busy, onProfile, onSelect, onAsk }: { documents: Document[]; relevant: RelevantDocument[]; hasProfile: boolean; busy: boolean; onProfile: () => void; onSelect: (id: number) => void; onAsk: () => void }) {
+function Dashboard({ documents, relevant, hasProfile, busy, onProfile, onSelect, onAsk, onBrowse }: { documents: Document[]; relevant: RelevantDocument[]; hasProfile: boolean; busy: boolean; onProfile: () => void; onSelect: (id: number) => void; onAsk: () => void; onBrowse: () => void }) {
+  const inForceCount = documents.filter((document) => document.lifecycle_state === 'IN_FORCE').length
+  const repealedCount = documents.filter((document) => document.lifecycle_state === 'REPEALED').length
+  const draftCount = documents.filter((document) => document.lifecycle_state === 'DRAFT').length
   return <div className="dashboard-page">
     <div className="page-heading"><div><p className="eyebrow">YOUR REGULATORY WORKSPACE</p><h1>Your RBI desk<span className="heading-dot">.</span></h1><p className="subheading">A clear starting point for the rules that may apply to your organization.</p></div><span className="corpus-status"><i /> {documents.length} indexed documents</span></div>
     <section className="overview-welcome"><div><p className="eyebrow">OFFICIAL SOURCES, TRACEABLE ANSWERS</p><h2>{hasProfile ? 'Your workspace is ready.' : 'Start with your organization.'}</h2><p>{hasProfile ? 'Ask a question or review the evidence connected to your profile.' : 'Add your entity type to see supported applicability matches. You can browse documents at any time.'}</p></div><button className="primary-button" type="button" onClick={hasProfile ? onAsk : onProfile}>{hasProfile ? 'Ask a question' : 'Set up profile'} <span>→</span></button></section>
+    <section className="corpus-snapshot" aria-labelledby="corpus-snapshot-title">
+      <div className="snapshot-heading"><div><p className="eyebrow">A QUICK READ OF THIS WORKSPACE</p><h2 id="corpus-snapshot-title">Corpus at a glance</h2></div><button className="text-button" type="button" onClick={onBrowse}>Browse all documents <span aria-hidden="true">→</span></button></div>
+      <div className="snapshot-grid">
+        <div className="snapshot-card snapshot-total"><span className="snapshot-label">Indexed documents</span><strong>{documents.length}</strong><small>Official RBI sources in this workspace</small></div>
+        <div className="snapshot-card"><span className="snapshot-label">In force</span><strong>{inForceCount}</strong><small>Currently marked active</small></div>
+        <div className="snapshot-card"><span className="snapshot-label">Repealed</span><strong>{repealedCount}</strong><small>Withdrawn from legal force</small></div>
+        <div className="snapshot-card"><span className="snapshot-label">Drafts</span><strong>{draftCount}</strong><small>Proposed rules, not final directions</small></div>
+      </div>
+      <p className="snapshot-note">This is a curated corpus, not complete RBI coverage. Status counts reflect indexed documents only.</p>
+    </section>
     <section className="section-block"><div className="section-heading"><div><p className="eyebrow">PERSONALIZED FOR YOU</p><h2>Relevant to your organization</h2></div><button className="text-button" type="button" onClick={onProfile}>{hasProfile ? 'Edit profile' : 'Create profile'}<span aria-hidden="true"> ↗</span></button></div>
       {!hasProfile ? <div className="empty-card"><div><h3>Profile not set up yet</h3><p>RAAY will show a match only when stored RBI evidence supports it.</p></div><button className="secondary-button" type="button" onClick={onProfile}>Set up profile <span>→</span></button></div> : busy ? <div className="loading-card"><span className="spinner"/><span>Checking evidence against your profile…</span></div> : relevant.length ? <div className="document-grid">{relevant.slice(0, 2).map((doc) => <DocumentCard key={doc.id} doc={doc} onClick={() => onSelect(doc.id)} />)}</div> : <div className="empty-card"><div><h3>No supported matches yet</h3><p>Current stored applicability evidence did not produce a match. Browse the corpus to inspect source material.</p></div></div>}
     </section>
