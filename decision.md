@@ -1,10 +1,10 @@
 # decision.md — Design Decision Log
 
-Records important design decisions and **why** they were made. Append only: never delete an entry. With two people, new entries use `D-A01…` (Person A) or `D-B01…` (Person B); `D-001` to `D-021` are shared history. If a decision changes, add a new entry and mark the old one `Superseded by D-xxx`.
+Records accepted design decisions and why they were made. Append new entries; do not delete historical decisions. If a decision changes, add a new entry and mark the old one `Superseded by D-xxx`.
 
 Status values: `Accepted` · `Provisional` (needs a test or answer) · `Superseded`.
 
-**Current project status:** Phase 1 in progress; ingestion, live keyword discovery and periodic polling are implemented, while Phase 0 labelled pairs remain pending.
+**Current project status:** Phase 5 in progress; native email/password auth, per-user profiles, and React screens are implemented. Live account-flow and user-isolation acceptance remain. Phase 4 latency diagnosis and recall evaluation remain open; the Phase 2 official historical diff is deferred.
 
 ---
 
@@ -132,7 +132,7 @@ Status values: `Accepted` · `Provisional` (needs a test or answer) · `Supersed
 - **Open:** None; further scope cuts must not remove authentication or evidence validation.
 
 ### D-023 — Auth0 managed OIDC
-- **Date:** 2026-11-01 · **Status:** Accepted
+- **Date:** 2026-11-01 · **Status:** Superseded by D-057
 - **Decision:** Use Auth0 Universal Login with Authorization Code and PKCE. FastAPI verifies JWT signature, issuer, audience and expiry through JWKS.
 - **Why:** Managed OIDC avoids storing passwords while providing a standards-based browser login and API security boundary.
 - **Rejected:** Self-hosted passwords and magic-link email delivery for the MVP.
@@ -174,7 +174,7 @@ Status values: `Accepted` · `Provisional` (needs a test or answer) · `Supersed
 - **Open:** None.
 
 ### D-029 — Authenticated ownership enforcement
-- **Date:** 2026-11-01 · **Status:** Accepted
+- **Date:** 2026-11-01 · **Status:** Superseded by D-057
 - **Decision:** Map the verified Auth0 `sub` claim to an internal user record and scope every profile, cached analysis and question query by that internal ID. Never accept the effective user ID from browser input.
 - **Why:** This prevents horizontal access caused by trusting a client-supplied identifier.
 - **Rejected:** Anonymous shared profiles and client-selected ownership.
@@ -350,6 +350,62 @@ Status values: `Accepted` · `Provisional` (needs a test or answer) · `Supersed
 - **Why:** After fixing query matching and Gemini timeout units, a live request returned the 60 percent qualifying-assets requirement, a matching quote from clause 8.1, and its RBI HTML DOM locator.
 - **Rejected:** Treating an HTTP 200 response or unsupported fallback as proof that grounded answering works.
 - **Open:** Finish semantic retrieval evaluation and the remaining Phase 4 edge cases.
+
+### D-053 — BGE-M3 embeddings remain local and separate from clauses
+- **Date:** 2026-11-01 · **Status:** Accepted by user
+- **Decision:** Use local `BAAI/bge-m3` dense embeddings, normalized to 1024 dimensions, and store them in `clause_embeddings(clause_id, model, embedding)`. Embed current-version clauses through an explicit rerunnable job; combine dense and full-text ranks with reciprocal-rank fusion.
+- **Why:** This preserves D-033, avoids sending regulatory clauses or queries to an external embedding service, and keeps model-versioned vectors separate from immutable source text.
+- **Rejected:** Groq-hosted embeddings, NVIDIA trial endpoints, and embedding fields on `clauses`.
+- **Open:** Validate recall@5 on a reviewed query set and monitor local memory/runtime before choosing a deployment device other than CPU.
+
+### D-054 — Question requests log stage timings without content
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Log retrieval scope, lexical search, embedding lookup/load, query encoding, vector search, Gemini wait, citation verification, and total request duration. Do not log question text, evidence quotes, or secrets.
+- **Why:** A live grounded request took 1–2 minutes, but existing logs exposed only the HTTP access line. Stage timings identify the bottleneck without persisting user or regulatory content.
+- **Rejected:** Guessing at latency causes from total request time or logging prompts to diagnose them.
+- **Open:** Use the first timed live request to determine whether cold model load, CPU encoding, database search, or Gemini dominates.
+
+### D-055 — Cache Python packages across Docker rebuilds
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Use a BuildKit pip cache mount during image installation so code changes can rebuild the application without downloading all dependency wheels again.
+- **Why:** The existing Docker layer re-ran `pip install` after every application source change and disabled pip's download cache.
+- **Rejected:** Baking package caches into the final runtime image.
+- **Open:** Dependency installation still reruns when the source package changes; cached artifacts should avoid repeat downloads.
+
+### D-056 — Phase 5 uses Auth0-scoped profiles and a four-area React UI
+- **Date:** 2026-11-01 · **Status:** Superseded by D-057
+- **Decision:** Use Auth0 Universal Login with the React SDK and Authorization Code with PKCE. FastAPI verifies RS256 JWTs using Auth0 JWKS, maps verified `sub` values to internal users, and scopes profile data to those users. The frontend provides overview, profile, relationship explorer, and cited-question areas.
+- **Why:** The product needs authenticated profile-based relevance while keeping the RBI corpus shared and profile ownership enforced by the API.
+- **Rejected:** Browser-supplied user IDs, local password storage, and per-user copies of regulatory documents.
+- **Open:** Configure a real Auth0 tenant, apply migration 005 to existing databases, and verify login plus cross-user isolation.
+
+### D-057 — Native email/password auth replaces Auth0
+- **Date:** 2026-11-01 · **Status:** Accepted by user
+- **Decision:** Remove Auth0 from the active app. Register and authenticate users by normalized email and password; store Argon2id password hashes, issue random revocable sessions, persist only session-token SHA-256 digests, and keep session cookies HttpOnly, SameSite=Lax, and Secure when HTTPS is enabled. Derive every user ID server-side.
+- **Why:** The user wants native accounts without Auth0 tenant setup. The local database has zero users and zero profiles, so no account records need conversion. Passwords use a slow, salted password hash rather than fast SHA hashing.
+- **Rejected:** Auth0-managed sign-in, plaintext or encrypted passwords, SHA-256 password hashes, and browser-supplied user IDs.
+- **Open:** Migration 006 is applied to the local database. Validate registration, login, logout, expiry, rate limits, and cross-user isolation. Email verification and password reset are not implemented; keep this prototype private until those flows and HTTPS deployment are addressed.
+
+### D-058 — Reduce question latency and correct Gemini timeout units
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Preload and reuse BGE-M3 and one Gemini async client per API process. Cap BGE-M3 CPU threads at configurable `EMBEDDING_CPU_THREADS=4`. Set Gemini `thinking_level=low` by default, configurable through `GEMINI_THINKING_LEVEL`. Pass `GEMINI_TIMEOUT_SECONDS` directly as seconds to `google-genai`; set its default to 60 seconds. This corrects the unit conversion recorded in D-051.
+- **Why:** The measured request spent 24.4 seconds loading BGE-M3, 5.1 seconds encoding the query, and 38.8 seconds waiting for Gemini. SDK inspection confirmed `interactions.create(timeout=...)` accepts seconds, so multiplying a 30-second setting by 1,000 disabled the intended timeout. Google documents low thinking as a supported latency control for Gemini 3.8 Flash.
+- **Rejected:** Reloading the model and reopening the HTTP client per request, leaving default medium thinking enabled, and passing milliseconds to an SDK field that expects seconds.
+- **Open:** Rebuild API and compare warm retrieval and total request timings. Confirm startup model preload succeeds with the mounted Hugging Face cache.
+
+### D-059 — Install CPU-only Torch in Docker
+- **Date:** 2026-11-01 · **Status:** Accepted
+- **Decision:** Install `torch==2.14.1` from PyTorch's official CPU wheel index before installing backend requirements. The runtime sets `EMBEDDING_DEVICE=cpu`, so Docker does not need CUDA libraries.
+- **Why:** The first rebuild attempt resolved generic PyPI Torch 2.15 and began installing multiple CUDA libraries totaling over 2 GB, despite CPU-only inference. PyTorch documents a dedicated CPU wheel index for CPU deployments.
+- **Rejected:** Installing generic PyPI Torch, which pulls CUDA runtime packages, and keeping the previous image without the latency fix.
+- **Open:** Confirm the CPU wheel installs in the API image and BGE-M3 still loads and embeds correctly.
+
+### D-060 — Organic minimalism and guided first-use experience
+- **Date:** 2026-11-01 · **Status:** Accepted by user
+- **Decision:** Use cream and soft beige as the primary surfaces, charcoal for readable text, and forest green for primary actions and focus states. Use warm editorial typography, open spacing, and rounded controls. Add a replayable four-step first-use tour, profile workflow prompts, searchable document index, answer examples, transparent request progress, and visible evidence locations.
+- **Why:** The user asked for a grounded, personable organic-minimal design and an interactive UI that explains the product to new users.
+- **Rejected:** A high-density dashboard, generic monochrome UI, and a static interface with no onboarding.
+- **Open:** Review the signed-in screens and tour during manual browser acceptance; use feedback to tune copy or layout.
 
 ---
 

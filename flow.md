@@ -3,7 +3,7 @@
 This document shows only behavior implemented in code so far. The complete target architecture remains in [`README.md`](README.md) and [`plan.md`](plan.md). New implemented behavior is added phase by phase so the build history stays easy to follow.
 
 **Last updated:** 2026-11-01  
-**Current phase:** Phase 4 in progress — scoped FTS and live Gemini citation path accepted; semantic retrieval remains
+**Current phase:** Phase 5 in progress — native email/password auth, profiles, and React UI added; live account-flow acceptance pending
 
 Status legend: `Done` means implemented and checked · `In progress` means code exists but the phase acceptance path is incomplete
 
@@ -13,6 +13,10 @@ Status legend: `Done` means implemented and checked · `In progress` means code 
 
 ```mermaid
 flowchart LR
+  FE[React email/password frontend] -->|HttpOnly session cookie| API[FastAPI API]
+  API --> TOK[Verify session and derive internal user]
+  TOK --> AUTHDB[(Users and hashed session tokens)]
+
   RBI[RBI official listings] --> SCH[APScheduler worker]
   SCH --> DIS[Allowlisted title keyword discovery]
   DIS --> FET[Polite fetch and raw cache]
@@ -20,7 +24,7 @@ flowchart LR
   FET --> PAR[HTML or PDF parser]
   PAR --> VER[Immutable document versions and clauses]
   VER --> DB[(PostgreSQL and pgvector)]
-  DB --> API[FastAPI document and clause endpoints]
+  DB --> API
 
   VER --> REF[Reference extraction]
   REF --> CLS[Explicit verb classification]
@@ -57,7 +61,7 @@ The ingestion, relationship, applicability, and lifecycle paths run end to end. 
 - Docker Compose database, API, and worker services.
 - PostgreSQL 16 with pgvector.
 - Six source-locked official RBI gold documents in `data/gold/corpus.yaml`.
-- Environment contracts for RBI polling, Auth0, Gemini, and embeddings.
+- Environment contracts for RBI polling, native sessions, Gemini, and embeddings.
 - Initial database schema and repository layout.
 
 ---
@@ -187,20 +191,54 @@ An NBFC-MFI matches RBI/2025-26/44 as `DIRECT`, while NBFC-ICC is `NOT_ESTABLISH
 
 - `POST /questions` accepts a question and explicit document IDs.
 - Retrieval expands scope up to one hop using verified relationships only, then searches current-version clauses with PostgreSQL full-text search.
-- Reciprocal-rank fusion combines lexical and semantic rankings when semantic retrieval is available; embeddings remain unimplemented.
+- Reciprocal-rank fusion combines lexical and semantic rankings when current scoped vectors exist.
 - Gemini Interactions adapter sends structured Pydantic JSON Schema with `store=false`.
 - Claim validation requires a retrieved clause ID and a quote found in that clause; responses include page or DOM location and official source URL.
 - Unsupported results return `Insufficient evidence in the selected documents`.
 - Fallback diagnostics distinguish empty retrieval, empty model output, empty model claims, and rejected citations without logging prompts or quotes.
-- Gemini's configured 30-second timeout is converted to the SDK's required milliseconds.
+- Gemini uses one reused async client per API process, stateless structured requests, and low thinking by default.
+- `GEMINI_TIMEOUT_SECONDS` is passed to the SDK in seconds; the prior milliseconds conversion was incorrect.
+- Local `BAAI/bge-m3` encodes current clauses and questions into normalized 1024-dimensional vectors.
+- Additive `clause_embeddings` table keeps each model's vectors separate from clauses.
+- Explicit `python -m app.embeddings.run` job embeds unindexed clauses and is safe to rerun.
+- Query-time dense cosine ranking joins lexical ranking through reciprocal-rank fusion when current scoped vectors exist.
+- Structured timing logs report retrieval, model, Gemini, validation, and total durations without logging questions or quotes.
+- API startup preloads BGE-M3 so the first user question avoids the 20–25 second cold model load.
+- CPU inference is capped at configurable `EMBEDDING_CPU_THREADS` (default `4`); warm query encoding measured 2.86 seconds versus the 5.09-second baseline.
+- The Docker image installs CPU-only PyTorch, avoiding over 2 GB of unnecessary CUDA packages.
 
 ### Current Phase 4 boundary
 
-Live retrieval returned paragraph 8.1 from RBI/2025-26/44 and the related 2022 direction. After changing query matching and converting the configured timeout to SDK milliseconds, the live API returned the 60 percent requirement with a matching quote and HTML DOM locator. Core lexical retrieval and grounded-answer acceptance pass. Semantic retrieval and remaining Phase 4 edge cases remain. See D-050 through D-052.
+Live retrieval and grounded-answer acceptance pass for paragraph 8.1: answer quote matches source and response includes the RBI DOM locator. Baseline timing measured 29.6 seconds retrieval and 38.8 seconds Gemini; API startup now loads the encoder in 25.7 seconds, and warm query encoding measures 2.86 seconds. Recheck the full authenticated question request after this rebuild. Recall@5 evaluation and remaining edge cases remain. See D-050 through D-055 and D-058 through D-059.
 
 ---
 
-## 7. Current Docker Compose runtime
+## 7. Phase 5 additions — native authentication, profiles, and user interface
+
+### Implemented
+
+- React and TypeScript frontend with email/password registration, sign-in, and logout.
+- Passwords use Argon2id with a unique salt; the application never stores plain passwords.
+- Login creates a random server-side session. PostgreSQL stores only the token digest and expiry; the browser receives an HttpOnly, SameSite cookie.
+- Login attempts are limited by email and client address. State-changing requests validate the configured frontend Origin.
+- The API derives the internal user from a valid session and scopes profile reads/writes by that user ID.
+- `stakeholder_profiles` stores entity type and explicit attributes; browser requests cannot set the effective user ID.
+- `GET /relevant` evaluates stored applicability evidence against the authenticated user's profile and returns source quotes and locators.
+- Four UI areas: document dashboard, profile form, verified relationship explorer with available old/new text, and cited question answering.
+- Warm cream, soft beige, charcoal, and forest-green visual system with responsive navigation and large readable controls.
+- First-use four-step product tour can be dismissed and replayed from the top bar; progress is remembered per account in the browser.
+- Dashboard guides users through profile setup, evidence exploration, and questions. Document search, question examples, and password visibility control are interactive.
+- Question requests show elapsed time and explain retrieval, drafting, and citation checks. Answers display source quotes and clickable source locations.
+- Document, relationship, and question endpoints now require a valid native session cookie.
+- Docker Compose includes a Vite frontend service on port 5173. Migration `006_native_email_auth.sql` adds credentials and session storage to existing databases.
+
+### Current Phase 5 boundary
+
+Set `SESSION_COOKIE_SECURE=true` when serving over HTTPS. For an existing DB, apply migration 006. Live registration, login/logout, session expiry, rate limits, cross-user isolation, and browser-to-API acceptance remain unverified. Email verification and password reset are not implemented, so keep this prototype private. Historical old/new text appears only where verified data exists; the known official 75%-to-60% example remains deferred.
+
+---
+
+## 8. Current Docker Compose runtime
 
 ```mermaid
 flowchart LR
@@ -208,14 +246,15 @@ flowchart LR
   W --> RAW[Shared raw cache]
   W --> DB[(PostgreSQL and pgvector)]
   API[API container] --> DB
+  FE[React and Vite frontend] -->|HttpOnly session cookie| API
   DEV[Developer or API client] --> API
 ```
 
-Running services today are `db`, `api`, and `worker`. Applicability and lifecycle run as pull-based worker commands. There is no implemented frontend, Auth0 verification, Gemini adapter, or retrieval engine yet, so those components are intentionally absent.
+Compose services are `db`, `api`, `worker`, and `frontend`. Applicability and lifecycle reconciliation remain pull-based worker commands.
 
 ---
 
-## 8. Build change log
+## 9. Build change log
 
 | Date | Phase | Addition | Decision |
 |------|-------|----------|----------|
@@ -235,3 +274,11 @@ Running services today are `db`, `api`, and `worker`. Applicability and lifecycl
 | 2026-11-01 | Phase 4 | Scoped retrieval, Gemini structured claims, quote validation, and fallback diagnostics | D-050 |
 | 2026-11-01 | Phase 4 | Convert configured Gemini timeout seconds to SDK milliseconds | D-051 |
 | 2026-11-01 | Phase 4 | Live grounded answer returns a verified clause quote and source location | D-052 |
+| 2026-11-01 | Phase 4 | Local BGE-M3 embeddings, separate vector storage, and dense RRF ranking | D-053 |
+| 2026-11-01 | Phase 4 | Safe per-stage request timing logs | D-054 |
+| 2026-11-01 | Runtime | Cache dependency wheels during Docker builds | D-055 |
+| 2026-11-01 | Phase 5 | Auth0 JWT validation, internal users, isolated profiles, React screens, and Compose frontend | D-056 |
+| 2026-11-01 | Phase 5 | Native Argon2id accounts, revocable server sessions, cookie auth, and Auth0 removal | D-057 |
+| 2026-11-01 | Phase 4 | Preload/reuse inference clients, cap CPU threads, reduce Gemini thinking, and correct timeout units | D-058 |
+| 2026-11-01 | Runtime | Install CPU-only Torch in Docker instead of CUDA-enabled PyPI build | D-059 |
+| 2026-11-01 | Phase 5 | Organic-minimal design system, guided tour, workflow cues, searchable corpus, and answer progress | D-060 |
