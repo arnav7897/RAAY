@@ -1,9 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.answer.gemini import GeminiLLM
 from app.answer.llm import (
     LLMInvalidOutputError,
     LLMProviderError,
@@ -30,15 +29,11 @@ SettingsDependency = Annotated[Settings, Depends(get_settings)]
 async def ask_question(
     request: QuestionRequest,
     settings: SettingsDependency,
+    app_request: Request,
 ) -> AnswerResponse:
-    if not settings.gemini_api_key:
-        raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured")
-
-    llm = GeminiLLM(
-        api_key=settings.gemini_api_key,
-        model=settings.gemini_answer_model,
-        timeout_seconds=settings.gemini_timeout_seconds,
-    )
+    llm = app_request.app.state.answer_llm
+    if llm is None:
+        raise HTTPException(status_code=503, detail="Answer model is not available")
     service = AnswerService(PostgresRetriever(settings.database_url), llm)
     try:
         return await service.answer(
@@ -51,6 +46,4 @@ async def ask_question(
         raise HTTPException(status_code=503, detail=str(error)) from error
     except (LLMInvalidOutputError, LLMProviderError) as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
-    finally:
-        await llm.aclose()
 

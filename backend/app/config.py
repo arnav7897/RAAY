@@ -15,10 +15,9 @@ class Settings(BaseSettings):
     rbi_discovery_max_matches_per_source: int = Field(default=20, ge=1, le=100)
     rbi_scheduler_timezone: str = "Asia/Kolkata"
     rbi_scheduler_run_on_startup: bool = False
-    gemini_api_key: str = ""
-    gemini_extract_model: str = "gemini-3.8-flash"
-    gemini_answer_model: str = "gemini-3.8-flash"
-    gemini_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    ollama_base_url: str = "http://host.docker.internal:11434"
+    ollama_answer_model: str = "qwen2.5:3b"
+    ollama_timeout_seconds: float = Field(default=120.0, gt=0, le=300)
 
 
 def get_settings() -> Settings:
